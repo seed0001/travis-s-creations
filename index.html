@@ -161,30 +161,71 @@
 
     <!-- SECTION 2: EARTH / SKILLS -->
     <section class="panel" id="p2">
-      <div class="side-panel right">
-        <p class="sp-label">02 — Skills</p>
-        <h2 class="sp-title">Tech Stack</h2>
-        <div class="sk-rows">
-          <div class="sk-row">
-            <div class="sk-label"><span class="sk-dot" style="--c:#3b82f6"></span>Python<span class="sk-pct">90%</span></div>
-            <div class="sk-track"><div class="sk-fill" style="--w:90%;--c:#3b82f6"></div></div>
-          </div>
-          <div class="sk-row">
-            <div class="sk-label"><span class="sk-dot" style="--c:#8b5cf6"></span>TypeScript<span class="sk-pct">80%</span></div>
-            <div class="sk-track"><div class="sk-fill" style="--w:80%;--c:#8b5cf6"></div></div>
-          </div>
-          <div class="sk-row">
-            <div class="sk-label"><span class="sk-dot" style="--c:#f59e0b"></span>JavaScript<span class="sk-pct">75%</span></div>
-            <div class="sk-track"><div class="sk-fill" style="--w:75%;--c:#f59e0b"></div></div>
-          </div>
+      <!-- LEFT SIDE: Tech Stack Tools (Raw Layout) -->
+      <div class="earth-skills-panel" style="pointer-events: all; max-width: 320px; z-index: 10;">
+        <div class="sp-label" style="margin-bottom: 12px; color: var(--acc2);">02 — Tech Stack</div>
+        <h2 class="sp-title" style="margin-bottom: 20px; font-size: 1.4rem; font-weight: 700; color: #fff;">Core Tools</h2>
+        <div class="sk-chips" style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <span class="chip" style="--acc: #3b82f6; border-color: rgba(59,130,246,0.3); color: #93c5fd;">FastAPI</span>
+          <span class="chip" style="--acc: #8b5cf6; border-color: rgba(139,92,246,0.3); color: #c084fc;">WebSockets</span>
+          <span class="chip" style="--acc: #f59e0b; border-color: rgba(245,158,11,0.3); color: #fde047;">Node.js</span>
+          <span class="chip" style="--acc: #ef4444; border-color: rgba(239,68,68,0.3); color: #fca5a5;">React</span>
+          <span class="chip" style="--acc: #10b981; border-color: rgba(16,185,129,0.3); color: #6ee7b7;">Three.js</span>
+          <span class="chip" style="--acc: #3b82f6; border-color: rgba(59,130,246,0.3); color: #93c5fd;">Docker</span>
+          <span class="chip" style="--acc: #10b981; border-color: rgba(16,185,129,0.3); color: #6ee7b7;">Postgres</span>
+          <span class="chip" style="--acc: #8b5cf6; border-color: rgba(139,92,246,0.3); color: #c084fc;">GLSL Shaders</span>
         </div>
-        <div class="sk-chips">
-          <span class="chip">Multi-Agent Systems</span><span class="chip">Knowledge Graphs</span>
-          <span class="chip">LLM Orchestration</span><span class="chip">FastAPI</span>
-          <span class="chip">Node.js</span><span class="chip">React</span>
-          <span class="chip">Three.js</span><span class="chip">WebSockets</span>
-          <span class="chip">Human Simulation</span><span class="chip">Segmentation</span>
+      </div>
+
+      <!-- RIGHT SIDE: System Concepts (Raw Text Layout) -->
+      <div class="earth-concepts-container" style="pointer-events: all; display: flex; flex-direction: column; gap: 16px; max-width: 380px; margin-left: auto; z-index: 10;">
+        <div class="sp-label" style="margin-bottom: 6px; color: var(--acc2);">02 — Architecture</div>
+        <h2 class="sp-title" style="margin-bottom: 16px; font-size: 1.4rem; font-weight: 700; color: #fff;">System Design</h2>
+        
+        <div class="concept-text-item">
+          <h3 class="concept-text-title" style="color: #3b82f6; font-size: 0.65rem;">◀ Semantic Knowledge Graphs</h3>
+          <p class="concept-text-desc" style="color: #93c5fd; font-size: 0.58rem; margin: 0; line-height: 1.55;">Maps data entities and semantic relationships into a queryable network, powering context-aware database queries and graph-RAG retrieval pipelines.</p>
         </div>
+
+        <div class="concept-text-item">
+          <h3 class="concept-text-title" style="color: #8b5cf6; font-size: 0.65rem;">◀ Cognitive LLM Orchestration</h3>
+          <p class="concept-text-desc" style="color: #c084fc; font-size: 0.58rem; margin: 0; line-height: 1.55;">Coordinates prompt chains, dynamic task planning, and localized state machines, bridging deterministic systems with probabilistic LLM reasoning.</p>
+        </div>
+
+        <div class="concept-text-item">
+          <h3 class="concept-text-title" style="color: #f59e0b; font-size: 0.65rem;">◀ Distributed Multi-Agent AI</h3>
+          <p class="concept-text-desc" style="color: #fde047; font-size: 0.58rem; margin: 0; line-height: 1.55;">Distributes processing across specialized autonomous workers, running complex concurrent workflows with conflict resolution at scale.</p>
+        </div>
+
+        <div class="concept-text-item">
+          <h3 class="concept-text-title" style="color: #10b981; font-size: 0.65rem;">◀ Telemetry &amp; Real-Time Sync</h3>
+          <p class="concept-text-desc" style="color: #6ee7b7; font-size: 0.58rem; margin: 0; line-height: 1.55;">Powers sub-millisecond, bi-directional communication channels for low-latency agent coordination, telemetry sync, and streaming telemetry.</p>
+        </div>
+      </div>
+
+      <!-- BOTTOM DATA BAR: Tech Stack & System Stats -->
+      <div class="earth-data-bar">
+        <div class="earth-db-stat">
+          <div class="earth-db-n" style="color: #3b82f6;">Python <span style="font-family: var(--mono); font-size: 0.72rem; color: #fff; margin-left: 4px;">90%</span></div>
+          <div class="earth-db-track"><div class="earth-db-fill" style="width: 90%; background: #3b82f6; box-shadow: 0 0 6px #3b82f6; height: 100%;"></div></div>
+        </div>
+        <div class="earth-db-divider"></div>
+        <div class="earth-db-stat">
+          <div class="earth-db-n" style="color: #8b5cf6;">TypeScript <span style="font-family: var(--mono); font-size: 0.72rem; color: #fff; margin-left: 4px;">80%</span></div>
+          <div class="earth-db-track"><div class="earth-db-fill" style="width: 80%; background: #8b5cf6; box-shadow: 0 0 6px #8b5cf6; height: 100%;"></div></div>
+        </div>
+        <div class="earth-db-divider"></div>
+        <div class="earth-db-stat">
+          <div class="earth-db-n" style="color: #f59e0b;">JavaScript <span style="font-family: var(--mono); font-size: 0.72rem; color: #fff; margin-left: 4px;">75%</span></div>
+          <div class="earth-db-track"><div class="earth-db-fill" style="width: 75%; background: #f59e0b; box-shadow: 0 0 6px #f59e0b; height: 100%;"></div></div>
+        </div>
+        <div class="earth-db-divider"></div>
+        <div class="earth-db-stat">
+          <div class="earth-db-n" style="color: #10b981;">Architectures <span style="font-family: var(--mono); font-size: 0.72rem; color: #fff; margin-left: 4px;">4 Core</span></div>
+          <div class="earth-db-track"><div class="earth-db-fill" style="width: 100%; background: #10b981; box-shadow: 0 0 6px #10b981; height: 100%;"></div></div>
+        </div>
+        <div class="earth-db-spacer"></div>
+        <div class="earth-db-tagline">Telemetry Scale: 1:1 Planetary Model</div>
       </div>
     </section>
 

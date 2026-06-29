@@ -406,6 +406,71 @@ a, button { cursor: crosshair; }
 .sk-fill.on { width: var(--w); }
 .sk-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 4px; }
 
+#p2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---- Earth page bottom data bar ---- */
+.earth-data-bar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 72px;
+  display: flex; align-items: center;
+  padding: 0 40px;
+  background: linear-gradient(to top, rgba(3,3,8,.92) 0%, rgba(3,3,8,.5) 70%, transparent 100%);
+  border-top: 1px solid rgba(255,255,255,.05);
+  pointer-events: all;
+  z-index: 10;
+}
+.earth-db-stat {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding-right: 28px; width: 140px;
+}
+.earth-db-n {
+  font-family: var(--mono); font-size: .65rem; font-weight: 700;
+  margin-bottom: 6px; text-transform: uppercase;
+}
+.earth-db-track {
+  width: 100%; height: 2px; background: rgba(255,255,255,.08);
+  border-radius: 99px; overflow: hidden;
+}
+.earth-db-fill {
+  height: 100%; border-radius: 99px;
+}
+.earth-db-divider {
+  width: 1px; height: 32px; background: rgba(255,255,255,.08);
+  margin-right: 28px; flex-shrink: 0;
+}
+.earth-db-spacer { flex: 1; }
+.earth-db-tagline {
+  font-family: var(--mono); font-size: .7rem; font-weight: 500;
+  color: rgba(255,255,255,.2); letter-spacing: .06em;
+}
+
+/* ---- Concept Text Layout (Earth Page) ---- */
+.earth-concepts-container {
+  max-width: 380px;
+  width: 100%;
+  margin-left: auto;
+  pointer-events: all;
+}
+.concept-text-item {
+  margin-bottom: 22px;
+}
+.concept-text-item:last-child {
+  margin-bottom: 0;
+}
+.concept-text-title {
+  font-family: var(--mono); font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  margin-bottom: 5px; display: flex; align-items: center; gap: 8px;
+}
+.concept-text-desc {
+  line-height: 1.55;
+}
+
 /* ── ECOSYSTEM HUD (scene 3) ── */
 #p3 { flex-direction: column; justify-content: flex-start; align-items: stretch; padding: 80px 40px 0; }
 
@@ -670,6 +735,16 @@ a, button { cursor: crosshair; }
   .sol-name { font-size: 2.4rem; }
   .sol-data-bar { padding: 0 20px; }
   .sol-db-tagline { display: none; }
+
+  /* Earth HUD responsive */
+  #p2 {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    overflow-y: auto;
+    gap: 20px;
+    padding-top: 80px;
+  }
 }
 
 #enterGroundBtn { background: var(--green); color: #05140a; font-weight: 700; box-shadow: 0 0 24px rgba(74,222,128,0.35); }
