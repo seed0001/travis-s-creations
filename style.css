@@ -409,41 +409,47 @@ a, button { cursor: crosshair; }
 .sk-fill.on { width: var(--w); }
 .sk-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 4px; }
 
-/* ── PROJECTS PANEL ───────────────────────────────────────── */
-.proj-panel {
-  position: relative;
-  background: rgba(4, 4, 10, 0.93);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 4px;
-  padding: 36px 40px;
-  max-width: 440px; width: 100%;
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-  background-image: 
-    linear-gradient(rgba(255,255,255,0.007) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.007) 1px, transparent 1px);
-  background-size: 24px 24px;
-  margin-left: 0;
+/* ── ECOSYSTEM HUD (scene 3) ── */
+#p3 { flex-direction: column; justify-content: flex-start; align-items: stretch; padding: 80px 40px 0; }
+
+.eco-identity {
+  position: absolute;
+  top: 80px; left: 40px;
+  max-width: 380px;
+  pointer-events: all;
 }
-.proj-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 20px;
-  max-height: 52vh;
-  overflow-y: auto;
-  padding-right: 6px;
-  width: 100%;
+.eco-label {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: .65rem; font-weight: 700;
+  color: var(--green); letter-spacing: .18em; text-transform: uppercase;
+  margin-bottom: 18px;
 }
-.proj-grid::-webkit-scrollbar {
-  width: 4px;
+.eco-label-line {
+  display: inline-block; width: 28px; height: 1px;
+  background: var(--green);
 }
-.proj-grid::-webkit-scrollbar-track {
-  background: rgba(255,255,255,0.01);
+.eco-name {
+  font-size: clamp(2.8rem,5vw,5rem); font-weight: 700;
+  letter-spacing: -.04em; line-height: 1; margin-bottom: 4px;
 }
-.proj-grid::-webkit-scrollbar-thumb {
-  background: var(--acc);
-  border-radius: 2px;
+.eco-slash { color: var(--green); }
+.eco-body {
+  font-size: .82rem; color: rgba(255,255,255,.38); line-height: 1.75;
+  max-width: 340px; margin-bottom: 20px;
+}
+.eco-stats {
+  display: flex; gap: 24px; padding-top: 24px; border-top: 1px solid var(--bdr); margin-top: 8px;
+}
+.eco-stat {
+  display: flex; flex-direction: column;
+}
+.eco-val {
+  display: block; font-size: 2rem; font-weight: 700; letter-spacing: -.04em;
+  background: linear-gradient(135deg, #fff 30%, rgba(255,255,255,.4));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.eco-lbl {
+  font-size: .68rem; color: var(--dim); margin-top: 2px; font-family: var(--mono);
 }
 
 /* ── 3D FLOATING LABELS ──────────────────────────────────────── */
@@ -668,3 +674,6 @@ a, button { cursor: crosshair; }
   .sol-data-bar { padding: 0 20px; }
   .sol-db-tagline { display: none; }
 }
+
+#enterGroundBtn { background: var(--green); color: #05140a; font-weight: 700; box-shadow: 0 0 24px rgba(74,222,128,0.35); }
+#enterGroundBtn:hover { background: #34d399; box-shadow: 0 10px 40px rgba(74,222,128,0.55); }

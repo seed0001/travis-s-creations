@@ -37,7 +37,7 @@
         <button class="ns active" data-i="0" title="Outer Galaxy">Galaxy</button>
         <button class="ns" data-i="1" title="Solar System">Solar</button>
         <button class="ns" data-i="2" title="Earth Orbit">Earth</button>
-        <button class="ns" data-i="3" title="City Network">City</button>
+        <button class="ns" data-i="3" title="Forest Ecosystem">Ecosystem</button>
         <button class="ns" data-i="4" title="Living Cell">Cell</button>
         <button class="ns" data-i="5" title="Molecular">Molecule</button>
       </div>
@@ -190,18 +190,29 @@
       </div>
     </section>
 
-    <!-- SECTION 3: CITY / PROJECTS -->
+    <!-- SECTION 3: ECOSYSTEM / PROJECTS -->
     <section class="panel" id="p3">
-      <div class="proj-panel">
-        <div class="proj-header">
-          <p class="sp-label">03 — Work</p>
-          <h2 class="sp-title" style="margin-bottom:6px">Featured Projects</h2>
-          <p class="proj-status" id="projStatus">Loading from GitHub…</p>
+      <div class="eco-identity">
+        <div class="eco-label">
+          <span class="eco-label-line"></span>
+          <span>03 — Ecosystem</span>
         </div>
-        <div class="proj-grid" id="projectsGrid"></div>
-        <a href="https://github.com/seed0001?tab=repositories" target="_blank" rel="noopener" class="btn-s" style="margin-top:12px;display:inline-flex">
-          All repositories ↗
-        </a>
+        <h2 class="eco-name">Forest<span class="eco-slash"><br>Ecosystem.</span></h2>
+        <p class="eco-body">A living forest simulation representing GitHub repositories as crawling, hovering, and flapping critters. Hover over critters or their labels to inspect details.</p>
+        <div class="eco-stats">
+          <div class="eco-stat">
+            <span class="eco-val" id="ecoCount">0</span>
+            <span class="eco-lbl">Critters</span>
+          </div>
+          <div class="eco-stat">
+            <span class="eco-val" id="ecoLanguages">0</span>
+            <span class="eco-lbl">Languages</span>
+          </div>
+        </div>
+        <button class="btn-p" id="enterGroundBtn" style="margin-top:24px;pointer-events:all;display:inline-flex;align-items:center;gap:8px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c-5.52 0-10 4.48-10 10s4.48 10 10 10 10-4.48 10-10-4.48-10-10-10zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>
+          Explore Forest Floor
+        </button>
       </div>
     </section>
 
@@ -293,6 +304,12 @@
       <div id="mTopics" class="mtp"></div>
       <a id="mLink" target="_blank" rel="noopener" class="btn-p modal-gh">Open on GitHub ↗</a>
     </div>
+  </div>
+
+  <!-- GROUND MODE OVERLAY INSTRUCTIONS -->
+  <div id="groundHUD" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(10,10,18,0.9);border:1px solid var(--green);border-radius:99px;padding:8px 24px;font-family:var(--mono);font-size:0.72rem;color:#fff;pointer-events:none;z-index:999;display:none;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.6), 0 0 10px rgba(74,222,128,0.2)">
+    <span style="width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)"></span>
+    <span><strong>Ground View:</strong> WASD / Arrows to Walk &middot; Drag Mouse to Look &middot; Press <span style="background:rgba(255,255,255,0.15);padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.25)">ESC</span> to exit</span>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>

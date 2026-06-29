@@ -26,7 +26,7 @@ const SCALE_LABELS = [
   { num: '~100,000',  unit: 'light years' },
   { num: '~8',        unit: 'light minutes' },
   { num: '~400',      unit: 'km altitude' },
-  { num: '~50',       unit: 'km overhead' },
+  { num: '~50',       unit: 'cm scale' },
   { num: '~0.01',     unit: 'mm scale' },
   { num: '~0.1',      unit: 'nanometers' },
 ];
@@ -119,9 +119,141 @@ const planeXZ   = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // Flat plane 
 const mouse3D   = new THREE.Vector3();
 let mouseActive = 0.0;
 
-let repoTowers = [];
-let hoveredTower = null;
+let repoTowers = []; // Used as critter colliders for raycasting
+let hoveredTower = null; // Used as hovered critter collider
 let dragMoved = false;
+
+// Forest Ecosystem
+let critterGroup = null;
+let critters = [];
+let animals = [];
+
+// Ground View Mode
+let isGroundMode = false;
+const groundPlayer = {
+  x: 0,
+  z: 3,
+  y: 0,
+  yaw: Math.PI,
+  pitch: -0.15
+};
+const keysPressed = {};
+
+window.addEventListener('keydown', e => {
+  keysPressed[e.key.toLowerCase()] = true;
+  if (e.key === 'Escape' && isGroundMode && currentWorld === 3) {
+    exitGroundMode();
+  }
+});
+
+window.addEventListener('keyup', e => {
+  keysPressed[e.key.toLowerCase()] = false;
+});
+
+function updateGroundMovement(dt) {
+  let moveX = 0;
+  let moveZ = 0;
+
+  if (keysPressed['w'] || keysPressed['arrowup']) {
+    moveX += Math.sin(groundPlayer.yaw);
+    moveZ += Math.cos(groundPlayer.yaw);
+  }
+  if (keysPressed['s'] || keysPressed['arrowdown']) {
+    moveX -= Math.sin(groundPlayer.yaw);
+    moveZ -= Math.cos(groundPlayer.yaw);
+  }
+  if (keysPressed['a'] || keysPressed['arrowleft']) {
+    moveX += Math.sin(groundPlayer.yaw - Math.PI / 2);
+    moveZ += Math.cos(groundPlayer.yaw - Math.PI / 2);
+  }
+  if (keysPressed['d'] || keysPressed['arrowright']) {
+    moveX -= Math.sin(groundPlayer.yaw - Math.PI / 2);
+    moveZ -= Math.cos(groundPlayer.yaw - Math.PI / 2);
+  }
+
+  const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
+  if (len > 0) {
+    const speed = 2.8;
+    const dx = (moveX / len) * speed * dt;
+    const dz = (moveZ / len) * speed * dt;
+    const nx = groundPlayer.x + dx;
+    const nz = groundPlayer.z + dz;
+
+    if (nx * nx + nz * nz < 480) {
+      groundPlayer.x = nx;
+      groundPlayer.z = nz;
+    }
+  }
+
+  groundPlayer.y = groundHeight(groundPlayer.x, groundPlayer.z) - 0.5 + 0.35;
+}
+
+function enterGroundMode() {
+  if (isGroundMode) return;
+  isGroundMode = true;
+
+  groundPlayer.x = camera.position.x * 0.4;
+  groundPlayer.z = camera.position.z * 0.4;
+  const r = Math.sqrt(groundPlayer.x * groundPlayer.x + groundPlayer.z * groundPlayer.z);
+  if (r > 8) {
+    groundPlayer.x = 0;
+    groundPlayer.z = 4;
+  }
+  groundPlayer.y = groundHeight(groundPlayer.x, groundPlayer.z) - 0.5 + 0.35;
+  groundPlayer.yaw = Math.PI;
+  groundPlayer.pitch = -0.15;
+
+  const groundHUD = document.getElementById('groundHUD');
+  if (groundHUD) groundHUD.style.display = 'flex';
+
+  scrollLocked = true;
+
+  const overlay = document.getElementById('tOverlay');
+  if (overlay) {
+    overlay.classList.add('on');
+    setTimeout(() => {
+      camTargetPos.set(groundPlayer.x, groundPlayer.y, groundPlayer.z);
+      camera.position.copy(camTargetPos);
+
+      const lx = groundPlayer.x + Math.sin(groundPlayer.yaw) * Math.cos(groundPlayer.pitch);
+      const ly = groundPlayer.y + Math.sin(groundPlayer.pitch);
+      const lz = groundPlayer.z + Math.cos(groundPlayer.yaw) * Math.cos(groundPlayer.pitch);
+      camTargetLook.set(lx, ly, lz);
+      camera.lookAt(camTargetLook);
+
+      overlay.classList.remove('on');
+    }, 250);
+  }
+}
+
+function exitGroundMode() {
+  if (!isGroundMode) return;
+  isGroundMode = false;
+
+  const groundHUD = document.getElementById('groundHUD');
+  if (groundHUD) groundHUD.style.display = 'none';
+
+  scrollLocked = false;
+
+  const overlay = document.getElementById('tOverlay');
+  if (overlay) {
+    overlay.classList.add('on');
+    setTimeout(() => {
+      const w = worlds[3];
+      const basePos = w.camPos;
+      const look = w.camLook;
+      camTargetPos.set(basePos.x, basePos.y, basePos.z);
+      camTargetLook.set(look.x, look.y, look.z);
+      camera.position.copy(camTargetPos);
+      camera.lookAt(camTargetLook);
+
+      dragTheta = 0;
+      dragPhi = 0;
+
+      overlay.classList.remove('on');
+    }, 250);
+  }
+}
 
 function initThree() {
   const canvas = document.getElementById('c');
@@ -189,8 +321,13 @@ function initThree() {
       dragMoved = true;
     }
 
-    dragTheta -= dx * 0.005;
-    dragPhi   = Math.max(-1.3, Math.min(1.3, dragPhi + dy * 0.005));
+    if (isGroundMode && currentWorld === 3) {
+      groundPlayer.yaw -= dx * 0.0035;
+      groundPlayer.pitch = Math.max(-0.6, Math.min(0.6, groundPlayer.pitch - dy * 0.0035));
+    } else {
+      dragTheta -= dx * 0.005;
+      dragPhi   = Math.max(-1.3, Math.min(1.3, dragPhi + dy * 0.005));
+    }
 
     startX = e.clientX;
     startY = e.clientY;
@@ -264,6 +401,14 @@ const tOverlay = document.getElementById('tOverlay');
 
 async function showWorld(idx) {
   if (idx === currentWorld || transitioning) return;
+  
+  if (idx !== 3 && isGroundMode) {
+    isGroundMode = false;
+    const groundHUD = document.getElementById('groundHUD');
+    if (groundHUD) groundHUD.style.display = 'none';
+    scrollLocked = false;
+  }
+
   transitioning = true;
 
   // Fade to black
@@ -318,7 +463,7 @@ async function showWorld(idx) {
   // Trigger per-section behaviors
   if (idx === 1) { triggerCounters(); initSolarHUD(); }
   if (idx === 2) triggerSkillBars();
-  if (idx === 3) triggerProjects();
+  if (idx === 3) triggerEcoHUD();
 
   // Fade back in
   await sleep(80);
@@ -1367,352 +1512,675 @@ const CROWD_FRAG = `
   }
 `;
 
-function buildCity() {
-  const w = new World('City',
-    { x:0, y:22, z:18 }, { x:0, y:0, z:0 },
-    0x010108, 0.012
+function groundHeight(x, z) {
+  const distSq = x * x + z * z;
+  const wave = Math.sin(x * 0.12) * Math.cos(z * 0.12) * 1.5 + Math.sin(x * 0.04) * 0.8;
+  // Subtle curvature to create a planet sphere feel
+  const curvature = -distSq * 0.00035;
+  return wave + curvature;
+}
+
+function buildEcosystem() {
+  const w = new World('Ecosystem',
+    { x:0, y:26, z:22 }, { x:0, y:0, z:0 },
+    0x031006, 0.0055
   );
 
-  // 1. Grid of buildings using InstancedMesh with Procedural Window Grid Shader
-  const ROWS = 18, COLS = 18;
-  const SPACING = 2.2;
-  const bGeo = new THREE.BoxGeometry(1, 1, 1);
-  
-  // Base PBR material modified with custom GLSL for window grids
-  const bMat = new THREE.MeshStandardMaterial({
-    color: 0x8fa2b8,
-    roughness: 0.72,
-    metalness: 0.22
+  critterGroup = new THREE.Group();
+  w.group.add(critterGroup);
+
+  // 1. Wavy Terrain Geometry displaced with height function (large 350x350)
+  const gGeo = new THREE.PlaneGeometry(350, 350, 80, 80);
+  const posAttr = gGeo.attributes.position;
+  for (let i = 0; i < posAttr.count; i++) {
+    const x = posAttr.getX(i);
+    const z = posAttr.getY(i);
+    const y = groundHeight(x, z);
+    posAttr.setZ(i, y);
+  }
+  gGeo.computeVertexNormals();
+
+  // Moss-green stylized forest floor material
+  const gMat = new THREE.MeshStandardMaterial({
+    color: 0x183c22,
+    roughness: 0.9,
+    metalness: 0.1,
+    flatShading: true
+  });
+  const ground = new THREE.Mesh(gGeo, gMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.5;
+  ground.receiveShadow = true;
+  w.group.add(ground);
+
+  // 2. Instanced Grass Blades swaying in the wind (8,000 instances)
+  const grassGeo = new THREE.ConeGeometry(0.03, 0.5, 3);
+  grassGeo.translate(0, 0.25, 0); // shift pivot to base
+
+  const grassMat = new THREE.MeshStandardMaterial({
+    color: 0x22c55e,
+    roughness: 0.7,
+    metalness: 0.1,
+    side: THREE.DoubleSide
   });
 
-  bMat.onBeforeCompile = (shader) => {
+  // Inject vertex shader sway logic
+  grassMat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = sharedUniforms.uTime;
-    
-    // Inject hash helper and uTime uniform
-    shader.fragmentShader = `
+    shader.vertexShader = `
       uniform float uTime;
-      float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
-    ` + shader.fragmentShader;
-    
-    // Replace emissive fragment logic with custom window coordinates
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <emissivemap_fragment>',
+    ` + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
       `
-      #include <emissivemap_fragment>
-      
-      // Window grid only on vertical side faces
-      vec3 fNormal = normalize(vNormal);
-      float isVertical = step(0.1, length(fNormal.xz));
-      
-      if (isVertical > 0.5) {
-        // Draw 5 columns and 16 rows of windows per building face
-        vec2 grid = vec2(5.0, 16.0);
-        vec2 winUv = fract(vUv * grid);
-        vec2 cellId = floor(vUv * grid);
-        
-        // Window border mask
-        float winMask = step(0.18, winUv.x) * step(0.18, 1.0 - winUv.x) *
-                        step(0.15, winUv.y) * step(0.15, 1.0 - winUv.y);
-                        
-        // Randomize on/off state using a hash of cell ID and position
-        float rand = hash2(cellId + vViewPosition.xy * 0.1);
-        
-        if (rand > 0.65 && winMask > 0.5) {
-          float colorSelect = fract(rand * 3.0);
-          vec3 wCol;
-          if (colorSelect < 0.33) {
-            wCol = vec3(1.0, 0.65, 0.25); // Amber windows
-          } else if (colorSelect < 0.66) {
-            wCol = vec3(0.25, 0.80, 1.0); // Cyan windows
-          } else {
-            wCol = vec3(1.0, 0.95, 0.75); // Warm white/yellow windows
-          }
-          // Twinkle effect
-          float twinkle = 0.75 + sin(uTime * 0.6 + rand * 12.0) * 0.25;
-          totalEmissiveRadiance += wCol * 2.2 * twinkle;
-        }
-      }
+      #include <begin_vertex>
+      float swayPhase = uTime * 2.5 + position.y * 1.5 + modelMatrix[3][0] * 0.4 + modelMatrix[3][2] * 0.4;
+      float sway = sin(swayPhase) * 0.15 * position.y;
+      transformed.x += sway;
       `
     );
   };
 
-  const repoList = (repos && repos.length) ? repos : FALLBACK;
-  repoTowers = [];
+  const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, 8000);
+  const grassDummy = new THREE.Object3D();
+  for (let i = 0; i < 8000; i++) {
+    const r = Math.random() * 45;
+    const theta = Math.random() * Math.PI * 2;
+    const x = Math.cos(theta) * r;
+    const z = Math.sin(theta) * r;
+    const y = groundHeight(x, z) - 0.5;
 
-  const repoCoords = [
-    { r: 5, c: 5 }, { r: 5, c: 9 }, { r: 5, c: 13 },
-    { r: 9, c: 5 }, { r: 9, c: 9 }, { r: 9, c: 13 },
-    { r: 13, c: 5 }, { r: 13, c: 9 }, { r: 13, c: 13 }
-  ];
+    grassDummy.position.set(x, y, z);
+    grassDummy.rotation.set(
+      (Math.random() - 0.5) * 0.2,
+      Math.random() * Math.PI,
+      (Math.random() - 0.5) * 0.2
+    );
+    const scale = 0.5 + Math.random() * 1.0;
+    grassDummy.scale.set(scale, scale, scale);
+    grassDummy.updateMatrix();
+    grassMesh.setMatrixAt(i, grassDummy.matrix);
+  }
+  grassMesh.instanceMatrix.needsUpdate = true;
+  grassMesh.castShadow = true;
+  grassMesh.receiveShadow = true;
+  w.group.add(grassMesh);
 
-  const beaconPos = [];
-  const beaconCol = [];
-  const beaconPhase = [];
+  // 3. Performant Instanced Forest Trees (400 trees)
+  const trunkGeo = new THREE.CylinderGeometry(0.12, 0.2, 3.5, 6);
+  trunkGeo.translate(0, 1.75, 0);
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3e2e, roughness: 0.9 });
 
-  // Remove existing floating labels container if it exists
-  const existingLabels = document.getElementById('labels-container-3d');
-  if (existingLabels) existingLabels.remove();
+  const leafGeo = new THREE.ConeGeometry(1.2, 3.0, 5);
+  leafGeo.translate(0, 1.5, 0);
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x165b33, roughness: 0.8, flatShading: true });
 
-  // Create a container for persistent 3D floating labels
-  const labelsContainer = document.createElement('div');
-  labelsContainer.id = 'labels-container-3d';
-  labelsContainer.style.position = 'fixed';
-  labelsContainer.style.inset = '0';
-  labelsContainer.style.pointerEvents = 'none';
-  labelsContainer.style.zIndex = '5';
-  labelsContainer.style.display = 'none'; // start hidden, toggled by showWorld
-  document.body.appendChild(labelsContainer);
+  const treeCount = 400;
+  const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, treeCount);
+  const leavesMesh = new THREE.InstancedMesh(leafGeo, leafMat, treeCount);
 
-  repoList.slice(0, 9).forEach((repo, repoIndex) => {
-    const coord = repoCoords[repoIndex];
-    const x = (coord.c - COLS/2) * SPACING;
-    const z = (coord.r - ROWS/2) * SPACING;
+  const tDummy = new THREE.Object3D();
+  const lDummy = new THREE.Object3D();
+
+  for (let i = 0; i < treeCount; i++) {
+    const r = 11.5 + Math.random() * 140.0;
+    const theta = Math.random() * Math.PI * 2;
+    const x = Math.cos(theta) * r;
+    const z = Math.sin(theta) * r;
+    const y = groundHeight(x, z) - 0.5;
+
+    const scale = 0.75 + Math.random() * 0.95;
+
+    tDummy.position.set(x, y, z);
+    tDummy.scale.set(scale, scale, scale);
+    tDummy.rotation.set(0, Math.random() * Math.PI, 0);
+    tDummy.updateMatrix();
+    trunkMesh.setMatrixAt(i, tDummy.matrix);
+
+    lDummy.position.set(x, y + 1.8 * scale, z);
+    lDummy.scale.set(scale, scale, scale);
+    lDummy.rotation.set(0, Math.random() * Math.PI, 0);
+    lDummy.updateMatrix();
+    leavesMesh.setMatrixAt(i, lDummy.matrix);
+  }
+
+  trunkMesh.instanceMatrix.needsUpdate = true;
+  trunkMesh.castShadow = true;
+  trunkMesh.receiveShadow = true;
+  w.group.add(trunkMesh);
+
+  leavesMesh.instanceMatrix.needsUpdate = true;
+  leavesMesh.castShadow = true;
+  leavesMesh.receiveShadow = true;
+  w.group.add(leavesMesh);
+
+  // 4. Forest Animals
+  // Hopping Rabbits
+  const rabbitGeo = new THREE.SphereGeometry(0.12, 6, 6);
+  const rabbitMat = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.8 });
+  const earGeo = new THREE.BoxGeometry(0.02, 0.12, 0.04);
+  earGeo.translate(0, 0.06, 0);
+
+  for (let i = 0; i < 2; i++) {
+    const rabbit = new THREE.Group();
+    const body = new THREE.Mesh(rabbitGeo, rabbitMat);
+    body.scale.set(1, 0.8, 1.4);
+    body.castShadow = true;
+    rabbit.add(body);
     
-    // Height of the repository tower based on size
-    const h = 5.5 + Math.min((repo.size || 0) / 100, 4);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), rabbitMat);
+    head.position.set(0, 0.08, 0.14);
+    head.castShadow = true;
+    rabbit.add(head);
 
-    const towerGeo = new THREE.BoxGeometry(1.2, h, 1.2);
-    const langColorHex = lc(repo.language);
-    const colorObj = new THREE.Color(langColorHex);
+    const earL = new THREE.Mesh(earGeo, rabbitMat);
+    earL.position.set(-0.03, 0.14, 0.12);
+    earL.rotation.set(-0.2, 0, 0.1);
+    rabbit.add(earL);
 
-    const towerMat = bMat.clone();
-    towerMat.color.copy(colorObj).multiplyScalar(0.7);
+    const earR = new THREE.Mesh(earGeo, rabbitMat);
+    earR.position.set(0.03, 0.14, 0.12);
+    earR.rotation.set(-0.2, 0, -0.1);
+    rabbit.add(earR);
 
-    towerMat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = sharedUniforms.uTime;
-      shader.fragmentShader = `
-        uniform float uTime;
-        float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
-      ` + shader.fragmentShader;
+    const rx = (Math.random() - 0.5) * 8;
+    const rz = (Math.random() - 0.5) * 8;
+    rabbit.position.set(rx, groundHeight(rx, rz) - 0.5, rz);
+    w.group.add(rabbit);
 
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <emissivemap_fragment>',
-        `
-        #include <emissivemap_fragment>
-        vec3 fNormal = normalize(vNormal);
-        float isVertical = step(0.1, length(fNormal.xz));
-        if (isVertical > 0.5) {
-          vec2 grid = vec2(6.0, 18.0);
-          vec2 winUv = fract(vUv * grid);
-          vec2 cellId = floor(vUv * grid);
-          float winMask = step(0.15, winUv.x) * step(0.15, 1.0 - winUv.x) *
-                          step(0.12, winUv.y) * step(0.12, 1.0 - winUv.y);
-          float rand = hash2(cellId + vViewPosition.xy * 0.1);
-          if (rand > 0.40 && winMask > 0.5) {
-            vec3 wCol = vec3(${colorObj.r}, ${colorObj.g}, ${colorObj.b});
-            float twinkle = 0.75 + sin(uTime * 1.5 + rand * 10.0) * 0.25;
-            totalEmissiveRadiance += wCol * 4.5 * twinkle;
+    animals.push({
+      mesh: rabbit,
+      type: 'rabbit',
+      speed: 0.8,
+      tx: rx,
+      tz: rz,
+      phase: Math.random() * 50.0,
+      hopTimer: 0
+    });
+  }
+
+  // Grazing Deer
+  const deer = new THREE.Group();
+  const deerMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.8 });
+  
+  const dBody = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.65), deerMat);
+  dBody.castShadow = true;
+  deer.add(dBody);
+
+  const dNeck = new THREE.Group();
+  dNeck.position.set(0, 0.15, 0.28);
+  const dNeckMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.35, 6), deerMat);
+  dNeckMesh.rotation.x = -0.5;
+  dNeckMesh.castShadow = true;
+  dNeck.add(dNeckMesh);
+
+  const dHead = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), deerMat);
+  dHead.position.set(0, 0.15, 0.1);
+  dHead.scale.set(1, 0.8, 1.4);
+  dHead.castShadow = true;
+  dNeck.add(dHead);
+  deer.add(dNeck);
+
+  const legGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.5, 4);
+  legGeo.translate(0, -0.25, 0);
+  const legs = [
+    { x: -0.1, z: 0.22 }, { x: 0.1, z: 0.22 },
+    { x: -0.1, z: -0.22 }, { x: 0.1, z: -0.22 }
+  ];
+  legs.forEach(l => {
+    const leg = new THREE.Mesh(legGeo, deerMat);
+    leg.position.set(l.x, -0.15, l.z);
+    leg.castShadow = true;
+    deer.add(leg);
+  });
+
+  const dx = -3.0;
+  const dz = 3.0;
+  deer.position.set(dx, groundHeight(dx, dz) - 0.5 + 0.4, dz);
+  deer.userData = { neck: dNeck };
+  w.group.add(deer);
+
+  animals.push({
+    mesh: deer,
+    type: 'deer',
+    speed: 0.3,
+    tx: dx,
+    tz: dz,
+    phase: 0,
+    actionTimer: 0,
+    state: 'grazing'
+  });
+
+  // Circling Birds
+  const birdGeo = new THREE.BoxGeometry(0.18, 0.02, 0.08);
+  const wingGeo = new THREE.BoxGeometry(0.14, 0.01, 0.07);
+  wingGeo.translate(0.07, 0, 0);
+  const birdMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.5 });
+
+  for (let i = 0; i < 2; i++) {
+    const bird = new THREE.Group();
+    const bBody = new THREE.Mesh(birdGeo, birdMat);
+    bBody.castShadow = true;
+    bird.add(bBody);
+
+    const lWing = new THREE.Mesh(wingGeo, birdMat);
+    lWing.position.set(-0.09, 0, 0);
+    lWing.rotation.y = Math.PI;
+    bird.add(lWing);
+
+    const rWing = new THREE.Mesh(wingGeo, birdMat);
+    rWing.position.set(0.09, 0, 0);
+    bird.add(rWing);
+
+    bird.position.set(
+      (Math.random() - 0.5) * 15,
+      6.0 + Math.random() * 2.0,
+      (Math.random() - 0.5) * 15
+    );
+    w.group.add(bird);
+
+    animals.push({
+      mesh: bird,
+      type: 'bird',
+      lWing: lWing,
+      rWing: rWing,
+      speed: 1.5,
+      phase: Math.random() * 100.0,
+      radius: 6.0 + Math.random() * 4.0,
+      cx: (Math.random() - 0.5) * 4.0,
+      cz: (Math.random() - 0.5) * 4.0
+    });
+  }
+
+  // 5. Environmental Lighting (Shadow Map focused on central 70x70 meadow)
+  w.group.add(new THREE.AmbientLight(0x0a1f0f, 1.5));
+  const dl = new THREE.DirectionalLight(0xfffaed, 2.5);
+  dl.position.set(15, 30, 15);
+  dl.castShadow = true;
+  dl.shadow.mapSize.width = 1024;
+  dl.shadow.mapSize.height = 1024;
+  dl.shadow.camera.near = 0.5;
+  dl.shadow.camera.far = 100;
+  const d = 35;
+  dl.shadow.camera.left = -d;
+  dl.shadow.camera.right = d;
+  dl.shadow.camera.top = d;
+  dl.shadow.camera.bottom = -d;
+  dl.shadow.bias = -0.0005;
+  w.group.add(dl);
+
+  // Generate initial critters using fallback data synchronously
+  updateEcosystemCritters();
+
+  // Attach button click event handler for exploring forest floor
+  setTimeout(() => {
+    const btn = document.getElementById('enterGroundBtn');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        enterGroundMode();
+      });
+    }
+  }, 100);
+
+  // Tick physics, movement, and animal behaviors
+  w.tick = (t) => {
+    const dt = 0.016; // average frame duration estimation
+
+    // 1. Critters Steering & Animations
+    critters.forEach(c => {
+      // Find direction vector to target
+      const x = c.group.position.x;
+      const z = c.group.position.z;
+      const dx = c.tx - x;
+      const dz = c.tz - z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist < 0.4) {
+        // Choose new target
+        c.tx = (Math.random() - 0.5) * 16.0;
+        c.tz = (Math.random() - 0.5) * 16.0;
+      } else {
+        // Move towards target
+        const vx = (dx / dist) * c.speed * dt;
+        const vz = (dz / dist) * c.speed * dt;
+        const nx = x + vx;
+        const nz = z + vz;
+        
+        // Ground height
+        const gY = groundHeight(nx, nz) - 0.5;
+        let ny = gY + c.baseY;
+
+        // Fliers bob up and down
+        if (c.species === 1 || c.species === 3) {
+          ny += Math.sin(t * 3.5 + c.phase) * 0.22;
+        }
+
+        c.group.position.set(nx, ny, nz);
+        c.collider.position.copy(c.group.position);
+
+        // Turn to face movement direction
+        const angle = Math.atan2(dx, dz);
+        let diff = angle - c.group.rotation.y;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        c.group.rotation.y += diff * 0.08;
+      }
+
+      // Animating based on Species
+      if (c.species === 0) {
+        // Beetle waddle
+        c.group.rotation.z = Math.sin(t * 7.0) * 0.06;
+      } 
+      else if (c.species === 1) {
+        // Firefly wing flutters & pulsating glow
+        if (c.leftWing) c.leftWing.rotation.z = Math.sin(t * 22.0) * 0.35;
+        if (c.rightWing) c.rightWing.rotation.z = -Math.sin(t * 22.0) * 0.35;
+        if (c.tailLight) {
+          const pulse = 0.5 + Math.sin(t * 6.0 + c.phase) * 0.35;
+          c.tailLight.material.color.copy(c.color).multiplyScalar(pulse);
+        }
+      } 
+      else if (c.species === 2) {
+        // Caterpillar segment waves
+        c.segments.forEach((seg, sIdx) => {
+          seg.position.y = Math.sin(t * 8.0 - sIdx * 1.1) * 0.035;
+        });
+      } 
+      else if (c.species === 3) {
+        // Butterfly wing flaps
+        if (c.leftWing) c.leftWing.rotation.z = Math.sin(t * 14.0) * 0.55;
+        if (c.rightWing) c.rightWing.rotation.z = -Math.sin(t * 14.0) * 0.55;
+      }
+    });
+
+    // 2. Animals Behaviors & Animations
+    animals.forEach(a => {
+      if (a.type === 'rabbit') {
+        const x = a.mesh.position.x;
+        const z = a.mesh.position.z;
+        const dx = a.tx - x;
+        const dz = a.tz - z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (dist < 0.4) {
+          a.tx = (Math.random() - 0.5) * 10.0;
+          a.tz = (Math.random() - 0.5) * 10.0;
+        } else {
+          // Hop movement (move forward mostly when Y is high)
+          a.hopTimer += dt * 6.0;
+          const hopCycle = Math.sin(a.hopTimer + a.phase);
+          const hopHeight = Math.max(0, hopCycle * 0.28);
+          const isMoving = hopHeight > 0.05;
+
+          const vx = isMoving ? (dx / dist) * a.speed * dt : 0;
+          const vz = isMoving ? (dz / dist) * a.speed * dt : 0;
+          const nx = x + vx;
+          const nz = z + vz;
+          const gY = groundHeight(nx, nz) - 0.5;
+
+          a.mesh.position.set(nx, gY + hopHeight, nz);
+
+          // Face movement
+          const angle = Math.atan2(dx, dz);
+          let diff = angle - a.mesh.rotation.y;
+          diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+          a.mesh.rotation.y += diff * 0.15;
+        }
+      } 
+      else if (a.type === 'deer') {
+        a.actionTimer += dt;
+        if (a.actionTimer > 7.0) {
+          a.actionTimer = 0;
+          a.state = a.state === 'grazing' ? 'moving' : 'grazing';
+          if (a.state === 'moving') {
+            a.tx = (Math.random() - 0.5) * 10.0;
+            a.tz = (Math.random() - 0.5) * 10.0;
           }
         }
-        `
-      );
-    };
 
-    const towerMesh = new THREE.Mesh(towerGeo, towerMat);
-    towerMesh.position.set(x, h/2 - 0.5, z);
-    towerMesh.castShadow = true;
-    towerMesh.receiveShadow = true;
+        if (a.state === 'moving') {
+          const x = a.mesh.position.x;
+          const z = a.mesh.position.z;
+          const dx = a.tx - x;
+          const dz = a.tz - z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
 
-    // Create persistent HTML label
+          if (dist > 0.5) {
+            const nx = x + (dx / dist) * a.speed * dt;
+            const nz = z + (dz / dist) * a.speed * dt;
+            const gY = groundHeight(nx, nz) - 0.5;
+            a.mesh.position.set(nx, gY + 0.4, nz);
+
+            // Face movement
+            const angle = Math.atan2(dx, dz);
+            let diff = angle - a.mesh.rotation.y;
+            diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+            a.mesh.rotation.y += diff * 0.08;
+          }
+
+          // Raise neck slightly
+          a.mesh.userData.neck.rotation.x = -0.3;
+        } else {
+          // Lower head to graze
+          a.mesh.userData.neck.rotation.x = -0.8 + Math.sin(t * 1.8) * 0.1;
+        }
+      } 
+      else if (a.type === 'bird') {
+        // Fly in circle
+        a.phase += dt * 0.5;
+        const x = a.cx + Math.cos(a.phase) * a.radius;
+        const z = a.cz + Math.sin(a.phase) * a.radius;
+        const y = a.mesh.position.y;
+        a.mesh.position.set(x, y, z);
+        a.mesh.rotation.y = -a.phase + Math.PI / 2;
+        
+        // Wing flapping
+        a.lWing.rotation.z = Math.sin(t * 12.0) * 0.45;
+        a.rWing.rotation.z = -Math.sin(t * 12.0) * 0.45;
+      }
+    });
+  };
+
+  worlds.push(w);
+}
+
+function updateEcosystemCritters() {
+  if (!critterGroup) return;
+
+  // Clear old DOM floating labels
+  const labelsContainer = document.getElementById('labels-container-3d');
+  if (labelsContainer) labelsContainer.innerHTML = '';
+
+  // Clear old meshes
+  while (critterGroup.children.length > 0) {
+    const obj = critterGroup.children[0];
+    critterGroup.remove(obj);
+    obj.traverse(node => {
+      if (node.isMesh) {
+        if (node.geometry) node.geometry.dispose();
+        if (Array.isArray(node.material)) {
+          node.material.forEach(m => m.dispose());
+        } else if (node.material) {
+          node.material.dispose();
+        }
+      }
+    });
+  }
+
+  repoTowers = [];
+  critters = [];
+
+  const repoList = repos;
+  if (repoList.length === 0) return;
+
+  // Immediately update HUD counters
+  const countEl = document.getElementById('ecoCount');
+  const langEl = document.getElementById('ecoLanguages');
+  if (countEl) countEl.textContent = repoList.length;
+
+  const uniqueLangs = new Set();
+  repoList.forEach(r => { if (r.language) uniqueLangs.add(r.language); });
+  if (langEl) langEl.textContent = uniqueLangs.size;
+
+  repoList.forEach((repo, i) => {
+    const colorHex = lc(repo.language);
+    const colorObj = new THREE.Color(colorHex);
+
+    const critter = new THREE.Group();
+
+    // Determine Species based on index
+    // 0: Beetle, 1: Firefly, 2: Caterpillar, 3: Butterfly
+    const species = i % 4;
+    let bodyHeight = 0.0;
+    let leftWing = null;
+    let rightWing = null;
+    let segments = [];
+    let tailLight = null;
+
+    const cMat = new THREE.MeshStandardMaterial({
+      color: colorObj,
+      roughness: 0.5,
+      metalness: 0.2
+    });
+
+    if (species === 0) {
+      // Beetle (crawler)
+      bodyHeight = 0.12;
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), cMat);
+      body.scale.set(1.0, 0.65, 1.3);
+      body.castShadow = true;
+      critter.add(body);
+      
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 }));
+      head.position.set(0, 0.03, 0.2);
+      head.castShadow = true;
+      critter.add(head);
+
+      const shellStripe = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.05, 0.24), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+      shellStripe.position.set(0, 0.08, -0.05);
+      critter.add(shellStripe);
+    } 
+    else if (species === 1) {
+      // Firefly (bobber)
+      bodyHeight = 0.5;
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), cMat);
+      body.castShadow = true;
+      critter.add(body);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+      head.position.set(0, 0, 0.11);
+      critter.add(head);
+
+      const glowMat = new THREE.MeshBasicMaterial({ color: colorObj });
+      tailLight = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), glowMat);
+      tailLight.position.set(0, -0.02, -0.11);
+      critter.add(tailLight);
+
+      const pLight = new THREE.PointLight(colorObj, 1.2, 1.8);
+      pLight.position.set(0, -0.02, -0.12);
+      critter.add(pLight);
+
+      const wingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+      leftWing = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.08), wingMat);
+      leftWing.position.set(-0.06, 0.04, -0.02);
+      leftWing.rotation.set(0.2, 0.3, 0.2);
+      critter.add(leftWing);
+
+      rightWing = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.08), wingMat);
+      rightWing.position.set(0.06, 0.04, -0.02);
+      rightWing.rotation.set(0.2, -0.3, -0.2);
+      critter.add(rightWing);
+    } 
+    else if (species === 2) {
+      // Caterpillar (crawler)
+      bodyHeight = 0.08;
+      const segCount = 4;
+      for (let s = 0; s < segCount; s++) {
+        const segSize = 0.08 - s * 0.008;
+        const seg = new THREE.Mesh(new THREE.SphereGeometry(segSize, 8, 8), cMat);
+        seg.position.set(0, 0, -s * 0.11);
+        seg.castShadow = true;
+        critter.add(seg);
+        segments.push(seg);
+      }
+    } 
+    else {
+      // Butterfly (flapper)
+      bodyHeight = 0.6;
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.22, 6), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+      body.rotation.x = Math.PI / 2;
+      body.castShadow = true;
+      critter.add(body);
+
+      const wingShapeGeo = new THREE.BoxGeometry(0.24, 0.005, 0.2);
+      wingShapeGeo.translate(0.12, 0, 0);
+
+      const wingMat = new THREE.MeshStandardMaterial({ color: colorObj, side: THREE.DoubleSide, metalness: 0.1, roughness: 0.5 });
+      
+      leftWing = new THREE.Mesh(wingShapeGeo, wingMat);
+      leftWing.position.set(-0.02, 0, 0);
+      leftWing.rotation.y = Math.PI;
+      leftWing.castShadow = true;
+      critter.add(leftWing);
+
+      rightWing = new THREE.Mesh(wingShapeGeo, wingMat);
+      rightWing.position.set(0.02, 0, 0);
+      rightWing.castShadow = true;
+      critter.add(rightWing);
+    }
+
+    // Collider
+    const colGeo = new THREE.SphereGeometry(0.35, 4, 4);
+    const colMat = new THREE.MeshBasicMaterial({ visible: false });
+    const collider = new THREE.Mesh(colGeo, colMat);
+    
+    const rx = (Math.random() - 0.5) * 16.0;
+    const rz = (Math.random() - 0.5) * 16.0;
+    const ry = groundHeight(rx, rz) - 0.5 + bodyHeight;
+
+    critter.position.set(rx, ry, rz);
+    collider.position.copy(critter.position);
+
+    critterGroup.add(critter);
+    critterGroup.add(collider);
+
+    // Create DOM Floating Label
     const label = document.createElement('div');
     label.className = 'floating-label';
-    label.dataset.index = repoIndex;
-    label.innerHTML = `<span class="fl-dot" style="background:${langColorHex};box-shadow:0 0 4px ${langColorHex}"></span>${repo.name}`;
+    label.dataset.index = i;
+    label.innerHTML = `<span class="fl-dot" style="background:${colorHex};box-shadow:0 0 4px ${colorHex}"></span>${repo.name}`;
     
-    // Clicking on the label opens the repository modal
     label.addEventListener('click', (e) => {
       e.stopPropagation();
       openModal(repo);
     });
 
-    labelsContainer.appendChild(label);
+    if (labelsContainer) labelsContainer.appendChild(label);
 
-    towerMesh.userData = {
-      isRepoTower: true,
+    collider.userData = {
+      isCritterCollider: true,
+      critterGroup: critter,
       repo: repo,
-      x: x,
-      z: z,
-      h: h,
-      labelEl: label,
-      baseColor: colorObj.clone(),
-      emissiveIntensity: 4.5
+      h: bodyHeight + 0.35,
+      labelEl: label
     };
+    repoTowers.push(collider);
 
-    w.group.add(towerMesh);
-    repoTowers.push(towerMesh);
-
-    // Blinking warning beacon on top
-    beaconPos.push(x, h - 0.5 + 0.12, z);
-    beaconCol.push(colorObj.r, colorObj.g, colorObj.b);
-    beaconPhase.push(Math.random() * 15.0);
-  });
-
-
-  // 2. Rooftop Warning Beacons Points System
-  if (beaconPos.length > 0) {
-    const beaconGeometry = new THREE.BufferGeometry();
-    beaconGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(beaconPos), 3));
-    beaconGeometry.setAttribute('aColor',   new THREE.BufferAttribute(new Float32Array(beaconCol), 3));
-    beaconGeometry.setAttribute('aPhase',   new THREE.BufferAttribute(new Float32Array(beaconPhase), 1));
-
-    const BEACON_VERT = `
-      attribute vec3  aColor;
-      attribute float aPhase;
-      varying vec3    vColor;
-      varying float   vAlpha;
-      uniform float   uTime;
-      uniform float   uPR;
-      void main() {
-        vColor = aColor;
-        // Aviation beacons blink warning pattern (4.5 Hz)
-        vAlpha = 0.3 + sin(uTime * 4.5 + aPhase) * 0.7;
-        if (vAlpha < 0.38) vAlpha = 0.08; // sharp flashing transitions
-        
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = clamp(2.5 * uPR * (150.0 / -mv.z), 1.0, 6.0);
-        gl_Position = projectionMatrix * mv;
-      }
-    `;
-    const BEACON_FRAG = `
-      varying vec3  vColor;
-      varying float vAlpha;
-      void main() {
-        vec2 uv = gl_PointCoord - 0.5;
-        float d = length(uv);
-        if (d > 0.5) discard;
-        float cutoff = smoothstep(0.5, 0.3, d);
-        gl_FragColor = vec4(vColor, cutoff * vAlpha * 0.95);
-      }
-    `;
-
-    const beaconMat = new THREE.ShaderMaterial({
-      vertexShader:   BEACON_VERT,
-      fragmentShader: BEACON_FRAG,
-      uniforms:       { uTime: sharedUniforms.uTime, uPR: { value: window.devicePixelRatio || 1.0 } },
-      transparent:    true,
-      depthWrite:     false,
-      depthTest:      true,
-      blending:       THREE.AdditiveBlending,
+    critters.push({
+      group: critter,
+      collider: collider,
+      species: species,
+      speed: species === 1 || species === 3 ? 0.8 + Math.random() * 0.6 : 0.4 + Math.random() * 0.4,
+      tx: rx,
+      tz: rz,
+      baseY: bodyHeight,
+      phase: Math.random() * 100.0,
+      leftWing: leftWing,
+      rightWing: rightWing,
+      segments: segments,
+      tailLight: tailLight,
+      color: colorObj.clone()
     });
-
-    const beacons = new THREE.Points(beaconGeometry, beaconMat);
-    w.group.add(beacons);
-  }
-
-
-  // Ground plane (dark tarmac, receives shadows)
-  const gGeo = new THREE.PlaneGeometry(60, 60, 1, 1);
-  const gMat = new THREE.MeshStandardMaterial({ color: 0x222b3d, roughness: 0.85 });
-  const ground = new THREE.Mesh(gGeo, gMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -.5;
-  ground.receiveShadow = true;
-  w.group.add(ground);
-
-  // Road grid lines
-  const linePts = [];
-  for (let r = 0; r <= ROWS; r++) {
-    if (r % 4 !== 0) continue;
-    const z = (r - ROWS/2) * SPACING;
-    linePts.push((-COLS/2)*SPACING, .01, z);
-    linePts.push(( COLS/2)*SPACING, .01, z);
-  }
-  for (let c = 0; c <= COLS; c++) {
-    if (c % 4 !== 0) continue;
-    const x = (c - COLS/2) * SPACING;
-    linePts.push(x, .01, (-ROWS/2)*SPACING);
-    linePts.push(x, .01, ( ROWS/2)*SPACING);
-  }
-  const lGeo = new THREE.BufferGeometry();
-  lGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(linePts), 3));
-  const lMat = new THREE.LineBasicMaterial({ color: 0x1e3a8a, transparent:true, opacity:.30, blending:THREE.AdditiveBlending });
-  w.group.add(new THREE.LineSegments(lGeo, lMat));
-
-
-  // 3. DIALED DOWN STREET NPCs (Only 1,000 sparse particles)
-  const NPC_COUNT = 1000;
-  const npcPos   = new Float32Array(NPC_COUNT * 3);
-  const npcDir   = new Float32Array(NPC_COUNT * 3);
-  const npcLane  = new Float32Array(NPC_COUNT);
-  const npcPhase = new Float32Array(NPC_COUNT);
-
-  // Road coordinates cache
-  const roadRows = [];
-  const roadCols = [];
-  for (let r = 0; r < ROWS; r++) { if (r % 4 === 0) roadRows.push((r - ROWS/2) * SPACING); }
-  for (let c = 0; c < COLS; c++) { if (c % 4 === 0) roadCols.push((c - COLS/2) * SPACING); }
-
-  for (let i = 0; i < NPC_COUNT; i++) {
-    npcPhase[i] = Math.random() * 100.0;
-    npcLane[i]  = (Math.random() - 0.5) * 0.7;
-
-    const isHorizontal = Math.random() < 0.5;
-    if (isHorizontal) {
-      const z = roadRows[Math.floor(Math.random() * roadRows.length)];
-      const x = (Math.random() - 0.5) * 40.0;
-      npcPos[i * 3]     = x;
-      npcPos[i * 3 + 1] = -0.42;
-      npcPos[i * 3 + 2] = z;
-      
-      const speed = 0.6 + Math.random() * 1.2;
-      npcDir[i * 3]     = Math.random() < 0.5 ? speed : -speed;
-      npcDir[i * 3 + 1] = 0.0;
-      npcDir[i * 3 + 2] = 0.0;
-    } else {
-      const x = roadCols[Math.floor(Math.random() * roadCols.length)];
-      const z = (Math.random() - 0.5) * 40.0;
-      npcPos[i * 3]     = x;
-      npcPos[i * 3 + 1] = -0.42;
-      npcPos[i * 3 + 2] = z;
-      
-      const speed = 0.6 + Math.random() * 1.2;
-      npcDir[i * 3]     = 0.0;
-      npcDir[i * 3 + 1] = 0.0;
-      npcDir[i * 3 + 2] = Math.random() < 0.5 ? speed : -speed;
-    }
-  }
-
-  const npcGeo = new THREE.BufferGeometry();
-  npcGeo.setAttribute('position', new THREE.BufferAttribute(npcPos, 3));
-  npcGeo.setAttribute('aDir',     new THREE.BufferAttribute(npcDir, 3));
-  npcGeo.setAttribute('aLane',    new THREE.BufferAttribute(npcLane, 1));
-  npcGeo.setAttribute('aPhase',   new THREE.BufferAttribute(npcPhase, 1));
-
-  const npcMat = new THREE.ShaderMaterial({
-    vertexShader:   CROWD_VERT,
-    fragmentShader: CROWD_FRAG,
-    uniforms:       { ...sharedUniforms, uScene: { value: 3.0 } },
-    transparent:    true,
-    depthWrite:     false,
-    depthTest:      true,
-    blending:       THREE.AdditiveBlending,
   });
-
-  const npcSystem = new THREE.Points(npcGeo, npcMat);
-  w.group.add(npcSystem);
-
-
-  // High-contrast metropolitan twilight lighting casting soft shadows
-  w.group.add(new THREE.AmbientLight(0x2d3b50, 1.4));
-  const dl = new THREE.DirectionalLight(0xfff0dd, 2.5);
-  dl.position.set(22, 38, 18);
-  dl.castShadow = true;
-  dl.shadow.mapSize.width = 1024;
-  dl.shadow.mapSize.height = 1024;
-  dl.shadow.camera.near = 0.5;
-  dl.shadow.camera.far = 120;
-  const d = 32;
-  dl.shadow.camera.left = -d;
-  dl.shadow.camera.right = d;
-  dl.shadow.camera.top = d;
-  dl.shadow.camera.bottom = -d;
-  dl.shadow.bias = -0.0006;
-  w.group.add(dl);
-
-  w.tick = (t) => {
-    // Emissive intensity is handled inside onBeforeCompile shader dynamically!
-  };
-  worlds.push(w);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2042,42 +2510,61 @@ function animate() {
   // 2. Smoothly rotate/orbit camera around look target
   if (currentWorld >= 0) {
     const w = worlds[currentWorld];
-    const basePos = w.camPos;
-    const look = w.camLook;
+    
+    if (currentWorld === 3 && isGroundMode) {
+      updateGroundMovement(0.016);
+      
+      const targetX = groundPlayer.x;
+      const targetY = groundPlayer.y;
+      const targetZ = groundPlayer.z;
 
-    // Calculate radius (distance to look target)
-    const offset = new THREE.Vector3(basePos.x - look.x, basePos.y - look.y, basePos.z - look.z);
-    const radius = offset.length();
+      const lx = targetX + Math.sin(groundPlayer.yaw) * Math.cos(groundPlayer.pitch);
+      const ly = targetY + Math.sin(groundPlayer.pitch);
+      const lz = targetZ + Math.cos(groundPlayer.yaw) * Math.cos(groundPlayer.pitch);
+      
+      camTargetPos.set(targetX, targetY, targetZ);
+      camTargetLook.set(lx, ly, lz);
+      
+      camera.position.copy(camTargetPos);
+      camera.lookAt(camTargetLook);
+    } else {
+      const basePos = w.camPos;
+      const look = w.camLook;
 
-    // Base spherical angles
-    const baseTheta = Math.atan2(offset.x, offset.z);
-    const basePhi   = Math.asin(offset.y / radius);
+      // Calculate radius (distance to look target)
+      const offset = new THREE.Vector3(basePos.x - look.x, basePos.y - look.y, basePos.z - look.z);
+      const radius = offset.length();
 
-    // Apply active drag rotation + subtle mouse parallax
-    const theta = baseTheta + dragTheta + mouseNDX * 0.05;
-    const phi   = Math.max(-1.4, Math.min(1.4, basePhi + dragPhi - mouseNDY * 0.04));
+      // Base spherical angles
+      const baseTheta = Math.atan2(offset.x, offset.z);
+      const basePhi   = Math.asin(offset.y / radius);
 
-    // Target position in spherical coordinates
-    const targetX = look.x + Math.sin(theta) * Math.cos(phi) * radius;
-    const targetY = look.y + Math.sin(phi) * radius;
-    const targetZ = look.z + Math.cos(theta) * Math.cos(phi) * radius;
+      // Apply active drag rotation + subtle mouse parallax
+      const theta = baseTheta + dragTheta + mouseNDX * 0.05;
+      const phi   = Math.max(-1.4, Math.min(1.4, basePhi + dragPhi - mouseNDY * 0.04));
 
-    // Smooth camera positioning
-    camTargetPos.x += (targetX - camTargetPos.x) * 0.05;
-    camTargetPos.y += (targetY - camTargetPos.y) * 0.05;
-    camTargetPos.z += (targetZ - camTargetPos.z) * 0.05;
+      // Target position in spherical coordinates
+      const targetX = look.x + Math.sin(theta) * Math.cos(phi) * radius;
+      const targetY = look.y + Math.sin(phi) * radius;
+      const targetZ = look.z + Math.cos(theta) * Math.cos(phi) * radius;
 
-    camTargetLook.x += (look.x - camTargetLook.x) * 0.05;
-    camTargetLook.y += (look.y - camTargetLook.y) * 0.05;
-    camTargetLook.z += (look.z - camTargetLook.z) * 0.05;
+      // Smooth camera positioning
+      camTargetPos.x += (targetX - camTargetPos.x) * 0.05;
+      camTargetPos.y += (targetY - camTargetPos.y) * 0.05;
+      camTargetPos.z += (targetZ - camTargetPos.z) * 0.05;
 
-    camera.position.copy(camTargetPos);
-    camera.lookAt(camTargetLook);
+      camTargetLook.x += (look.x - camTargetLook.x) * 0.05;
+      camTargetLook.y += (look.y - camTargetLook.y) * 0.05;
+      camTargetLook.z += (look.z - camTargetLook.z) * 0.05;
+
+      camera.position.copy(camTargetPos);
+      camera.lookAt(camTargetLook);
+    }
 
     // 3. Tick active world animations
     w.tick(t);
 
-    // 4. Raycast for interactive 3D Repository Towers in City Grid
+    // 4. Raycast for interactive 3D Critters in Forest Ecosystem
     if (currentWorld === 3 && repoTowers.length > 0) {
       raycaster.setFromCamera(mouse2D, camera);
       const intersects = raycaster.intersectObjects(repoTowers);
@@ -2085,13 +2572,21 @@ function animate() {
         const hit = intersects[0].object;
         if (hoveredTower !== hit) {
           if (hoveredTower) {
-            hoveredTower.scale.set(1.0, 1.0, 1.0);
+            if (hoveredTower.userData.critterGroup) {
+              hoveredTower.userData.critterGroup.scale.set(1.0, 1.0, 1.0);
+            } else {
+              hoveredTower.scale.set(1.0, 1.0, 1.0);
+            }
             if (hoveredTower.userData.labelEl) {
               hoveredTower.userData.labelEl.classList.remove('active');
             }
           }
           hoveredTower = hit;
-          hoveredTower.scale.set(1.06, 1.06, 1.06);
+          if (hoveredTower.userData.critterGroup) {
+            hoveredTower.userData.critterGroup.scale.set(1.15, 1.15, 1.15);
+          } else {
+            hoveredTower.scale.set(1.06, 1.06, 1.06);
+          }
           document.body.style.cursor = 'pointer';
           if (hoveredTower.userData.labelEl) {
             hoveredTower.userData.labelEl.classList.add('active');
@@ -2100,7 +2595,7 @@ function animate() {
           const repo = hoveredTower.userData.repo;
           const color = lc(repo.language);
           const tooltipEl = document.getElementById('tooltip3d');
-          if (tooltipEl) {
+          if (tooltipEl && repo) {
             tooltipEl.innerHTML = `
               <div style="font-weight: 700; color: #fff; font-size: 0.8rem; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">${repo.name}</div>
               <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.65rem; color: #a1a1aa;">
@@ -2117,7 +2612,11 @@ function animate() {
         }
       } else {
         if (hoveredTower) {
-          hoveredTower.scale.set(1.0, 1.0, 1.0);
+          if (hoveredTower.userData.critterGroup) {
+            hoveredTower.userData.critterGroup.scale.set(1.0, 1.0, 1.0);
+          } else {
+            hoveredTower.scale.set(1.0, 1.0, 1.0);
+          }
           if (hoveredTower.userData.labelEl) {
             hoveredTower.userData.labelEl.classList.remove('active');
           }
@@ -2134,7 +2633,7 @@ function animate() {
         const label = tower.userData.labelEl;
         if (!label) return;
         
-        tempV.set(tower.position.x, tower.userData.h - 0.5, tower.position.z);
+        tempV.set(tower.position.x, tower.position.y + (tower.userData.h || 0.4), tower.position.z);
         tempV.project(camera);
 
         if (tempV.z > 1.0) {
@@ -2153,7 +2652,11 @@ function animate() {
       if (tooltipEl && tooltipEl.style.display === 'block') {
         tooltipEl.style.display = 'none';
         if (hoveredTower) {
-          hoveredTower.scale.set(1.0, 1.0, 1.0);
+          if (hoveredTower.userData.critterGroup) {
+            hoveredTower.userData.critterGroup.scale.set(1.0, 1.0, 1.0);
+          } else {
+            hoveredTower.scale.set(1.0, 1.0, 1.0);
+          }
           if (hoveredTower.userData.labelEl) {
             hoveredTower.userData.labelEl.classList.remove('active');
           }
@@ -2186,7 +2689,7 @@ window.addEventListener('wheel', e => {
 let touchY0 = 0;
 window.addEventListener('touchstart', e => { touchY0 = e.touches[0].clientY; }, { passive:true });
 window.addEventListener('touchend', e => {
-  if (transitioning) return;
+  if (transitioning || scrollLocked) return;
   const dy = touchY0 - e.changedTouches[0].clientY;
   if (Math.abs(dy) < 50) return;
   showWorld(Math.max(0, Math.min(worlds.length-1, currentWorld + (dy>0?1:-1))));
@@ -2199,7 +2702,23 @@ document.getElementById('heroCta').addEventListener('click',  () => showWorld(3)
 // ─────────────────────────────────────────────────────────────
 // GITHUB DATA
 // ─────────────────────────────────────────────────────────────
-let repos = [], projsDone = false;
+let repos = [];
+// Pre-populate with 37 mock items so the ecosystem is alive during load
+for (let i = 0; i < 37; i++) {
+  const mockName = `project-critter-${i + 1}`;
+  const mockLang = i % 4 === 0 ? 'Python' : (i % 4 === 1 ? 'TypeScript' : (i % 4 === 2 ? 'Go' : 'Rust'));
+  repos.push({
+    name: mockName,
+    description: `Procedural mock repository representation for insect-critter #${i+1} in the forest ecosystem.`,
+    language: mockLang,
+    stargazers_count: 0,
+    forks_count: 0,
+    updated_at: new Date(Date.now() - i * 86400000).toISOString(),
+    html_url: `https://github.com/seed0001/${mockName}`,
+    topics: ['mock', mockLang.toLowerCase(), 'ecosystem']
+  });
+}
+let projsDone = false;
 
 async function fetchGitHub() {
   try {
@@ -2209,44 +2728,52 @@ async function fetchGitHub() {
     repos = data.filter(r=>!r.fork).sort((a,b)=>(b.stargazers_count-a.stargazers_count)||(new Date(b.updated_at)-new Date(a.updated_at)));
     const sc = document.querySelector('[data-target="35"]');
     if (sc) sc.dataset.target = data.length;
-  } catch { repos = FALLBACK; }
+  } catch { repos = [...FALLBACK]; }
+
+  // Ensure exactly 37 repositories for the ecosystem
+  if (repos.length < 37) {
+    const origLen = repos.length;
+    for (let i = origLen; i < 37; i++) {
+      const mockName = `project-critter-${i + 1}`;
+      const mockLang = i % 4 === 0 ? 'Python' : (i % 4 === 1 ? 'TypeScript' : (i % 4 === 2 ? 'Go' : 'Rust'));
+      repos.push({
+        name: mockName,
+        description: `Procedural mock repository representation for insect-critter #${i+1} in the forest ecosystem.`,
+        language: mockLang,
+        stargazers_count: Math.floor(Math.random() * 5),
+        forks_count: 0,
+        updated_at: new Date(Date.now() - i * 86400000).toISOString(),
+        html_url: `https://github.com/seed0001/${mockName}`,
+        topics: ['mock', mockLang.toLowerCase(), 'ecosystem']
+      });
+    }
+  }
 }
 
-function triggerProjects() {
-  if (projsDone) return;
-  projsDone = true;
-  const grid = document.getElementById('projectsGrid');
-  const status = document.getElementById('projStatus');
-  status.textContent = repos.length ? `${repos.length} repos · live from GitHub` : 'Featured projects';
-  grid.innerHTML = '';
-  repos.slice(0,9).forEach((repo,i) => {
-    const color = lc(repo.language);
-    const card  = document.createElement('div');
-    card.className = 'p-card';
-    card.tabIndex  = 0;
-    card.setAttribute('role','button');
-    card.innerHTML = `
-      <div class="p-strip" style="background:${color}"></div>
-      <div class="p-body">
-        <div class="p-head">
-          <span class="p-name">${repo.name}</span>
-          <div class="p-badge"><span class="p-ldot" style="background:${color};box-shadow:0 0 4px ${color}88"></span>${repo.language||'—'}</div>
-        </div>
-        <p class="p-desc">${repo.description||'No description.'}</p>
-        ${(repo.topics||[]).slice(0,3).length?`<div class="p-topics">${(repo.topics||[]).slice(0,3).map(t=>`<span class="p-topic">${t}</span>`).join('')}</div>`:''}
-        <div class="p-foot">
-          <div class="p-meta">
-            <span class="p-mi"><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.873 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>${repo.stargazers_count}</span>
-            <span class="p-mi">${fmtDate(repo.updated_at)}</span>
-          </div>
-          <span class="p-more">Details →</span>
-        </div>
-      </div>`;
-    card.addEventListener('click', ()=>openModal(repo));
-    card.addEventListener('keydown', e=>{ if(e.key==='Enter') openModal(repo); });
-    grid.appendChild(card);
-    setTimeout(()=>card.classList.add('in'), 60+i*50);
-  });
+let ecoHUDDone = false;
+function triggerEcoHUD() {
+  if (ecoHUDDone) return; ecoHUDDone = true;
+  const countEl = document.getElementById('ecoCount');
+  const langEl = document.getElementById('ecoLanguages');
+  if (!countEl || !langEl) return;
+
+  const targetCount = repos.length || 37;
+  let curCount = 0;
+  const t1 = setInterval(() => {
+    curCount = Math.min(curCount + Math.ceil(targetCount / 20), targetCount);
+    countEl.textContent = curCount;
+    if (curCount >= targetCount) clearInterval(t1);
+  }, 30);
+
+  const langs = new Set();
+  repos.forEach(r => { if (r.language) langs.add(r.language); });
+  const targetLangs = langs.size || 5;
+  let curLangs = 0;
+  const t2 = setInterval(() => {
+    curLangs = Math.min(curLangs + 1, targetLangs);
+    langEl.textContent = curLangs;
+    if (curLangs >= targetLangs) clearInterval(t2);
+  }, 100);
 }
 
 const FALLBACK = [
@@ -2337,7 +2864,7 @@ async function runLoader() {
     [35,  'Building galaxy…'],
     [52,  'Constructing solar system…'],
     [65,  'Generating Earth…'],
-    [78,  'Raising city grid…'],
+    [78,  'Sprouting forest ecosystem…'],
     [88,  'Assembling cell…'],
     [95,  'Synthesizing molecule…'],
     [100, 'Ready.'],
@@ -2349,7 +2876,7 @@ async function runLoader() {
   buildGalaxy();
   buildSolarSystem();
   buildEarth();
-  buildCity();
+  buildEcosystem();
   buildCell();
   buildMolecule();
   animate();
@@ -2361,6 +2888,7 @@ async function runLoader() {
   }
 
   await ghFetch;
+  updateEcosystemCritters();
   await sleep(300);
 
   document.getElementById('loader').classList.add('out');
