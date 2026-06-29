@@ -57,7 +57,8 @@ const PARTICLE_VERT = `
         float initAngle = atan(pos.z, pos.x);
         // Rotation curve: inner stars orbit faster than outer ones
         float speed = 0.38 / (r + 0.6);
-        float currentAngle = initAngle + uTime * speed;
+        // Wrap angle using modulo to prevent float precision quantization spokes
+        float currentAngle = mod(initAngle + uTime * speed, 6.2831853);
         
         pos.x = cos(currentAngle) * r;
         pos.z = sin(currentAngle) * r;
@@ -88,8 +89,9 @@ const PARTICLE_FRAG = `
   void main() {
     vec2 uv = gl_PointCoord - 0.5;
     float d = length(uv);
-    // Softer exponential radial falloff for gas-cloud glow
-    float a = exp(-d * 6.8) * vAlpha;
+    // Smoothly fade alpha to exactly 0.0 at d=0.5 to eliminate square quad border grids
+    float cutoff = smoothstep(0.5, 0.42, d);
+    float a = exp(-d * 6.8) * cutoff * vAlpha;
     if (a < 0.005) discard;
     gl_FragColor = vec4(vColor, a);
   }
@@ -1060,8 +1062,8 @@ function animate() {
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
   
-  // 1. Update shared uniforms
-  sharedUniforms.uTime.value = t;
+  // 1. Update shared uniforms (wrap time to a multiple of 2*PI to preserve float precision in shaders)
+  sharedUniforms.uTime.value = t % (Math.PI * 2000);
   sharedUniforms.uMouseActive.value = mouseActive;
 
   // 2. Smoothly rotate/orbit camera around look target
