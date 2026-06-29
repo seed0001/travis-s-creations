@@ -483,29 +483,169 @@ function buildGalaxy() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// WORLD 1 — SOLAR SYSTEM
+// WORLD 1 — SOLAR SYSTEM (Shaders & Generation)
 // ─────────────────────────────────────────────────────────────
+const SUN_VERT = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const SUN_FRAG = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  uniform float uTime;
+
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    vec2 shift = vec2(100.0);
+    mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+    for (int i = 0; i < 4; ++i) {
+      v += a * noise(p);
+      p = rot * p * 2.0 + shift;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main() {
+    // Boiling convection swirls
+    vec2 uv = vUv * 6.0;
+    float n1 = fbm(uv + vec2(uTime * 0.16, uTime * 0.12));
+    float n2 = fbm(uv - vec2(uTime * 0.10, -uTime * 0.15));
+    float finalNoise = (n1 + n2) * 0.5;
+
+    vec3 cRed    = vec3(0.55, 0.02, 0.0);
+    vec3 cOrange = vec3(1.0, 0.38, 0.0);
+    vec3 cYellow = vec3(1.0, 0.82, 0.0);
+    vec3 cWhite  = vec3(1.0, 1.0, 0.95);
+
+    vec3 color;
+    if (finalNoise < 0.35) {
+      color = mix(cRed, cOrange, finalNoise / 0.35);
+    } else if (finalNoise < 0.65) {
+      color = mix(cOrange, cYellow, (finalNoise - 0.35) / 0.30);
+    } else {
+      color = mix(cYellow, cWhite, (finalNoise - 0.65) / 0.35);
+    }
+
+    // Edge fresnel fire glow
+    vec3 view = normalize(vec3(0, 0, 1));
+    float rim = 1.0 - abs(dot(vNormal, view));
+    rim = pow(rim, 3.0);
+    color += cOrange * rim * 1.1;
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
+function createProceduralPlanetTexture(name, colorHex) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  
+  const baseColor = new THREE.Color(colorHex);
+  ctx.fillStyle = '#' + baseColor.getHexString();
+  ctx.fillRect(0, 0, 256, 128);
+  
+  if (name === 'Mercury') {
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 128;
+      const r = 3 + Math.random() * 8;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.stroke();
+    }
+  } else if (name === 'Venus') {
+    for (let i = 0; i < 20; i++) {
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(255,240,200,0.16)' : 'rgba(160,130,80,0.12)';
+      const h = 4 + Math.random() * 12;
+      const y = Math.random() * 128;
+      ctx.fillRect(0, y, 256, h);
+    }
+  } else if (name === 'Earth') {
+    // continents
+    ctx.fillStyle = '#22953a';
+    for (let i = 0; i < 8; i++) {
+      ctx.beginPath();
+      ctx.arc(Math.random()*256, Math.random()*128, 12 + Math.random()*22, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // cloud overlay
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(Math.random()*256, Math.random()*128, 45, 6);
+    }
+  } else if (name === 'Mars') {
+    ctx.fillStyle = 'rgba(70,25,8,0.3)';
+    for (let i = 0; i < 9; i++) {
+      ctx.beginPath();
+      ctx.arc(Math.random()*256, Math.random()*128, 15 + Math.random()*25, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // polar caps
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillRect(0, 0, 256, 8);
+    ctx.fillRect(0, 120, 256, 8);
+  } else if (name === 'Jupiter') {
+    for (let y = 0; y < 128; y += 4) {
+      const c = Math.sin(y * 0.12) * 0.5 + 0.5;
+      ctx.fillStyle = c > 0.6 ? 'rgba(120,60,30,0.38)' : c > 0.3 ? 'rgba(180,120,80,0.25)' : 'rgba(235,185,140,0.12)';
+      ctx.fillRect(0, y, 256, 4);
+    }
+    // Great Red Spot
+    ctx.fillStyle = 'rgba(190,40,20,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(150, 85, 16, 9, 0, 0, Math.PI*2);
+    ctx.fill();
+  } else if (name === 'Saturn') {
+    for (let y = 0; y < 128; y += 6) {
+      ctx.fillStyle = y % 12 === 0 ? 'rgba(145,115,70,0.25)' : 'rgba(225,195,145,0.12)';
+      ctx.fillRect(0, y, 256, 6);
+    }
+  }
+  
+  const tex = new THREE.CanvasTexture(canvas);
+  return tex;
+}
+
 function buildSolarSystem() {
   const w = new World('Solar',
     { x:0, y:18, z:40 }, { x:0, y:0, z:0 },
     0x020204, 0.003
   );
 
-  // SUN — multi-layer glow effect
-  const sunGeo  = new THREE.SphereGeometry(2.4, 32, 32);
-  const sunMat  = new THREE.MeshStandardMaterial({
-    color:0xff9900, emissive:0xff6600, emissiveIntensity:2.5,
-    roughness:1, metalness:0,
+  // SUN — Swirling Noise Surface Material
+  const sunGeo  = new THREE.SphereGeometry(2.4, 48, 48);
+  const sunMat  = new THREE.ShaderMaterial({
+    vertexShader:   SUN_VERT,
+    fragmentShader: SUN_FRAG,
+    uniforms:       { uTime: sharedUniforms.uTime },
   });
   const sun = new THREE.Mesh(sunGeo, sunMat);
   w.group.add(sun);
 
-  // Sun glow shells
-  [4, 6, 9].forEach((r, i) => {
+  // Sun glow shells (atmospheric bleed)
+  [4, 6.2, 9].forEach((r, i) => {
     const g = new THREE.SphereGeometry(r, 16, 16);
     const m = new THREE.MeshBasicMaterial({
-      color: i===0 ? 0xff8800 : i===1 ? 0xff5500 : 0xdd3300,
-      transparent:true, opacity: i===0 ? 0.12 : i===1 ? 0.06 : 0.03,
+      color: i===0 ? 0xff6a00 : i===1 ? 0xff4500 : 0xcc2200,
+      transparent:true, opacity: i===0 ? 0.15 : i===1 ? 0.07 : 0.03,
       blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.BackSide,
     });
     w.group.add(new THREE.Mesh(g, m));
@@ -514,6 +654,57 @@ function buildSolarSystem() {
   // Point light from sun
   const sunLight = new THREE.PointLight(0xffcc77, 4, 300);
   w.group.add(sunLight);
+
+
+  // SOLAR FLARE PARTICLES (dynamic emission from surface)
+  const FLARE_COUNT = 1500;
+  const flarePos  = new Float32Array(FLARE_COUNT * 3);
+  const flareCol  = new Float32Array(FLARE_COUNT * 3);
+  const flareSiz  = new Float32Array(FLARE_COUNT);
+  const flareData = [];
+  
+  for (let i = 0; i < FLARE_COUNT; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = Math.acos((Math.random() * 2) - 1);
+    const dir   = new THREE.Vector3(
+      Math.sin(phi) * Math.cos(theta),
+      Math.sin(phi) * Math.sin(theta),
+      Math.cos(phi)
+    );
+    const speed = 0.35 + Math.random() * 0.45;
+    const phase = Math.random() * 1.5;
+    const size  = 0.5 + Math.random() * 1.5;
+    
+    flareData.push({ dir, speed, phase, size });
+    
+    flarePos[i * 3]     = dir.x * 2.4;
+    flarePos[i * 3 + 1] = dir.y * 2.4;
+    flarePos[i * 3 + 2] = dir.z * 2.4;
+    
+    flareCol[i * 3]     = 1.0;
+    flareCol[i * 3 + 1] = 0.5;
+    flareCol[i * 3 + 2] = 0.1;
+    
+    flareSiz[i]         = size;
+  }
+  
+  const flareGeo = new THREE.BufferGeometry();
+  flareGeo.setAttribute('position', new THREE.BufferAttribute(flarePos, 3));
+  flareGeo.setAttribute('aColor',   new THREE.BufferAttribute(flareCol, 3));
+  flareGeo.setAttribute('aSize',    new THREE.BufferAttribute(flareSiz, 1));
+  
+  const flareMat = new THREE.ShaderMaterial({
+    vertexShader:   PARTICLE_VERT,
+    fragmentShader: PARTICLE_FRAG,
+    uniforms:       { ...sharedUniforms, uScene: { value: 1.0 } },
+    transparent:    true,
+    depthWrite:     false,
+    blending:       THREE.AdditiveBlending,
+  });
+  
+  const flares = new THREE.Points(flareGeo, flareMat);
+  w.group.add(flares);
+
 
   // Planets: [ name, radius, orbitR, speed, color, rings? ]
   const planets = [
@@ -525,7 +716,6 @@ function buildSolarSystem() {
     { name:'Saturn',  r:.9,  orbit:22,   speed:.08,  col:0xe8d090, rings:true },
   ];
 
-  const orbitMeshes = [];
   const planetMeshes = [];
 
   planets.forEach(p => {
@@ -539,12 +729,18 @@ function buildSolarSystem() {
     orbit.rotation.x = Math.PI / 2;
     w.group.add(orbit);
 
-    // Planet
-    const pGeo = new THREE.SphereGeometry(p.r, 20, 20);
+    // Planet with procedural 3D map + bump map for topography
+    const pGeo = new THREE.SphereGeometry(p.r, 24, 24);
+    const tex  = createProceduralPlanetTexture(p.name, p.col);
     const pMat = new THREE.MeshStandardMaterial({
-      color: p.col, emissive: p.col, emissiveIntensity:.08,
-      roughness:.9, metalness:.1,
+      map:       tex,
+      roughness: 0.8,
+      metalness: 0.1,
     });
+    if (p.name === 'Mercury' || p.name === 'Mars') {
+      pMat.bumpMap = tex;
+      pMat.bumpScale = 0.02;
+    }
     const planet = new THREE.Mesh(pGeo, pMat);
     planet.userData = { orbit: p.orbit, speed: p.speed, angle: Math.random() * Math.PI * 2 };
     w.group.add(planet);
@@ -567,9 +763,38 @@ function buildSolarSystem() {
   addBackgroundStars(w.group, 4000, 60, 300);
 
   w.tick = (t) => {
-    // Pulse sun
-    sunMat.emissiveIntensity = 2.2 + Math.sin(t * 1.4) * .4;
+    // Update flares positions and colors dynamically
+    const fPosAttr = flareGeo.getAttribute('position');
+    const fColAttr = flareGeo.getAttribute('aColor');
+    
+    for (let i = 0; i < FLARE_COUNT; i++) {
+      const fd = flareData[i];
+      const life = ((t * fd.speed + fd.phase) % 1.5) / 1.5;
+      const dist = 2.4 + life * 1.8;
+      
+      const swirlX = Math.sin(t * 6.0 + fd.phase * 10.0) * 0.16 * life;
+      const swirlY = Math.cos(t * 6.0 + fd.phase * 10.0) * 0.16 * life;
+      
+      fPosAttr.setXYZ(i,
+        fd.dir.x * dist + swirlX,
+        fd.dir.y * dist + swirlY,
+        fd.dir.z * dist
+      );
+      
+      let r, g, b;
+      if (life < 0.2) {
+        r = 1.0; g = 0.95; b = 0.6;
+      } else if (life < 0.6) {
+        r = 1.0; g = 0.45; b = 0.08;
+      } else {
+        r = 0.8 * (1.0 - life); g = 0.12 * (1.0 - life); b = 0.0;
+      }
+      fColAttr.setXYZ(i, r, g, b);
+    }
+    fPosAttr.needsUpdate = true;
+    fColAttr.needsUpdate = true;
 
+    // Orbit planets
     planetMeshes.forEach(pm => {
       const ud = pm.userData;
       ud.angle += ud.speed * 0.004;
