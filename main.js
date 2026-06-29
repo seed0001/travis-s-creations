@@ -39,14 +39,45 @@ const PARTICLE_VERT = `
   attribute vec3  aColor;
   varying   vec3  vColor;
   varying   float vAlpha;
+  
   uniform   float uTime;
   uniform   float uPR;
+  uniform   float uScene;       // 0.0 for Galaxy, 1.0 for others
+  uniform   vec3  uMousePos;    // 3D projected mouse position
+  uniform   float uMouseActive; // 1.0 if mouse is on screen
 
   void main() {
     vColor = aColor;
-    float twinkle = 0.6 + sin(uTime * 1.8 + position.x * 11.3 + position.y * 7.7) * 0.4;
+    vec3 pos = position;
+
+    // 1. Keplerian Orbit for Galaxy (Scene 0)
+    if (uScene == 0.0) {
+      float r = length(pos.xz);
+      if (r > 0.1) {
+        float initAngle = atan(pos.z, pos.x);
+        // Rotation curve: inner stars orbit faster than outer ones
+        float speed = 0.38 / (r + 0.6);
+        float currentAngle = initAngle + uTime * speed;
+        
+        pos.x = cos(currentAngle) * r;
+        pos.z = sin(currentAngle) * r;
+      }
+    }
+
+    // 2. Mouse Gravity Interaction (displacement force)
+    if (uMouseActive == 1.0) {
+      float d = distance(pos, uMousePos);
+      if (d < 5.5) {
+        float force = pow(1.0 - d / 5.5, 2.0) * 1.5;
+        vec3 dir = normalize(pos - uMousePos);
+        pos += dir * force;
+      }
+    }
+
+    float twinkle = 0.65 + sin(uTime * 1.6 + pos.x * 9.3 + pos.z * 7.1) * 0.35;
     vAlpha = twinkle;
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+
+    vec4 mv = modelViewMatrix * vec4(pos, 1.0);
     gl_PointSize = clamp(aSize * uPR * (280.0 / -mv.z), 0.5, 14.0);
     gl_Position  = projectionMatrix * mv;
   }
@@ -55,21 +86,37 @@ const PARTICLE_FRAG = `
   varying vec3  vColor;
   varying float vAlpha;
   void main() {
-    vec2 uv = gl_PointCoord - .5;
+    vec2 uv = gl_PointCoord - 0.5;
     float d = length(uv);
-    float core = 1.0 - smoothstep(0.0, 0.2, d);
-    float halo = (1.0 - smoothstep(0.18, 0.5, d)) * 0.4;
-    float a = (core + halo) * vAlpha;
-    if (a < 0.01) discard;
+    // Softer exponential radial falloff for gas-cloud glow
+    float a = exp(-d * 6.8) * vAlpha;
+    if (a < 0.005) discard;
     gl_FragColor = vec4(vColor, a);
   }
 `;
 
 // ─────────────────────────────────────────────────────────────
-// THREE.JS CORE
+// THREE.JS CORE & INTERACTION STATE
 // ─────────────────────────────────────────────────────────────
 let renderer, scene, camera, clock;
-let sharedUniforms; // { uTime, uPR } shared by all particle materials
+let sharedUniforms;
+
+let mouseNDX = 0, mouseNDY = 0;
+const camTargetPos  = new THREE.Vector3();
+const camTargetLook = new THREE.Vector3();
+
+// Camera Orbit Dragging state
+let dragTheta = 0;
+let dragPhi = 0;
+let isDragging = false;
+let startX = 0, startY = 0;
+
+// Mouse Raycast projection (for particle gravity physics)
+const raycaster = new THREE.Raycaster();
+const mouse2D   = new THREE.Vector2();
+const planeXZ   = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // Flat plane at y=0
+const mouse3D   = new THREE.Vector3();
+let mouseActive = 0.0;
 
 function initThree() {
   const canvas = document.getElementById('c');
@@ -86,16 +133,59 @@ function initThree() {
   camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.01, 5000);
 
   sharedUniforms = {
-    uTime: { value: 0 },
-    uPR:   { value: Math.min(window.devicePixelRatio, 2) },
+    uTime:        { value: 0 },
+    uPR:          { value: Math.min(window.devicePixelRatio, 2) },
+    uMousePos:    { value: mouse3D },
+    uMouseActive: { value: 0.0 },
+    uScene:       { value: 1.0 }, // default: non-galaxy (static)
   };
 
+  // Resize listener
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     sharedUniforms.uPR.value = Math.min(window.devicePixelRatio, 2);
   });
+
+  // Track Mouse movement for parallax & raycasting
+  document.addEventListener('mousemove', e => {
+    mouseNDX = (e.clientX / window.innerWidth - 0.5) * 2;
+    mouseNDY = (e.clientY / window.innerHeight - 0.5) * 2;
+
+    mouse2D.x = mouseNDX;
+    mouse2D.y = -mouseNDY;
+    raycaster.setFromCamera(mouse2D, camera);
+    raycaster.ray.intersectPlane(planeXZ, mouse3D);
+    mouseActive = 1.0;
+  });
+
+  document.addEventListener('mouseleave', () => {
+    mouseActive = 0.0;
+  });
+
+  // Mouse Drag Camera Orbit interaction
+  window.addEventListener('mousedown', e => {
+    if (e.target.closest('#ui') || e.target.closest('#modal')) return;
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    dragTheta -= dx * 0.005;
+    dragPhi   = Math.max(-1.3, Math.min(1.3, dragPhi + dy * 0.005));
+
+    startX = e.clientX;
+    startY = e.clientY;
+  });
+
+  window.addEventListener('mouseup',    () => isDragging = false);
+  window.addEventListener('mouseleave', () => isDragging = false);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -133,14 +223,22 @@ async function showWorld(idx) {
   // Hide old
   if (currentWorld >= 0) worlds[currentWorld].group.visible = false;
 
+  // Reset drag variables on world shift
+  dragTheta = 0;
+  dragPhi = 0;
+
   // Switch
   currentWorld = idx;
   const w = worlds[idx];
   w.group.visible = true;
 
-  // Move camera instantly (hidden by overlay)
-  camera.position.set(w.camPos.x, w.camPos.y, w.camPos.z);
-  camera.lookAt(w.camLook.x, w.camLook.y, w.camLook.z);
+  // Set immediate targets (hidden by overlay) so the camera doesn't wildly snap from the previous section
+  const basePos = w.camPos;
+  const look = w.camLook;
+  camTargetPos.set(basePos.x, basePos.y, basePos.z);
+  camTargetLook.set(look.x, look.y, look.z);
+  camera.position.copy(camTargetPos);
+  camera.lookAt(camTargetLook);
 
   // Fog
   if (w.fogColor && w.fogDensity) {
@@ -961,10 +1059,48 @@ function addBackgroundStars(group, count, rMin, rMax, opacity = 1) {
 function animate() {
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
+  
+  // 1. Update shared uniforms
   sharedUniforms.uTime.value = t;
+  sharedUniforms.uMouseActive.value = mouseActive;
 
+  // 2. Smoothly rotate/orbit camera around look target
   if (currentWorld >= 0) {
-    worlds[currentWorld].tick(t);
+    const w = worlds[currentWorld];
+    const basePos = w.camPos;
+    const look = w.camLook;
+
+    // Calculate radius (distance to look target)
+    const offset = new THREE.Vector3(basePos.x - look.x, basePos.y - look.y, basePos.z - look.z);
+    const radius = offset.length();
+
+    // Base spherical angles
+    const baseTheta = Math.atan2(offset.x, offset.z);
+    const basePhi   = Math.asin(offset.y / radius);
+
+    // Apply active drag rotation + subtle mouse parallax
+    const theta = baseTheta + dragTheta + mouseNDX * 0.05;
+    const phi   = Math.max(-1.4, Math.min(1.4, basePhi + dragPhi - mouseNDY * 0.04));
+
+    // Target position in spherical coordinates
+    const targetX = look.x + Math.sin(theta) * Math.cos(phi) * radius;
+    const targetY = look.y + Math.sin(phi) * radius;
+    const targetZ = look.z + Math.cos(theta) * Math.cos(phi) * radius;
+
+    // Smooth camera positioning
+    camTargetPos.x += (targetX - camTargetPos.x) * 0.05;
+    camTargetPos.y += (targetY - camTargetPos.y) * 0.05;
+    camTargetPos.z += (targetZ - camTargetPos.z) * 0.05;
+
+    camTargetLook.x += (look.x - camTargetLook.x) * 0.05;
+    camTargetLook.y += (look.y - camTargetLook.y) * 0.05;
+    camTargetLook.z += (look.z - camTargetLook.z) * 0.05;
+
+    camera.position.copy(camTargetPos);
+    camera.lookAt(camTargetLook);
+
+    // 3. Tick active world animations
+    w.tick(t);
   }
 
   renderer.render(scene, camera);
