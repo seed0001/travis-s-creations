@@ -217,11 +217,14 @@ function buildGalaxy() {
       const branchAngle = (armIndex / ARMS) * Math.PI * 2;
       const angle = branchAngle + spinAngle;
 
-      // Power-law scatter: concentrates particles tightly near the arm's spine
+      // Circular/polar scatter to prevent grid/axial line artifacts
       const power = 3.6;
-      const spreadX = Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.45 * (radius + 1.2);
-      const spreadY = Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.30 * (radius + 1.2);
-      const spreadZ = Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.45 * (radius + 1.2);
+      const spreadRadius = Math.pow(Math.random(), power) * 0.48 * (radius + 1.2);
+      const spreadAngle  = Math.random() * Math.PI * 2;
+      
+      const spreadX = Math.cos(spreadAngle) * spreadRadius;
+      const spreadZ = Math.sin(spreadAngle) * spreadRadius;
+      const spreadY = Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.28 * (radius + 1.2);
 
       x = Math.cos(angle) * radius + spreadX;
       y = spreadY;
