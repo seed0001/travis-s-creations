@@ -998,56 +998,97 @@ function buildSolarSystem() {
 const EARTH_VERT = `
   varying vec2 vUv;
   varying vec3 vNormal;
+  varying vec3 vPosition;
+  varying float vHeight;
+  uniform float uTime;
+
+  float hash(vec3 p) {
+    p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+    p += dot(p.xyz, p.yzx + 19.19);
+    return fract(p.x * p.y * p.z);
+  }
+  float noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), u.x),
+          mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), u.x), u.y),
+      mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), u.x),
+          mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), u.x), u.y),
+      u.z
+    );
+  }
+  float fbm(vec3 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int k = 0; k < 4; k++) {
+      v += a * noise(p);
+      p *= 2.1;
+      a *= 0.48;
+    }
+    return v;
+  }
+
   void main() {
     vUv = uv;
+    vPosition = position;
+    
+    // Large landmass patterns + fine rocky ridges
+    float baseHeight = fbm(position * 0.38);
+    float fineDetail = fbm(position * 1.8) * 0.15;
+    float height = baseHeight + fineDetail;
+    vHeight = height;
+
+    // Displace landmasses significantly along normal to match the bumpy reference image
+    float disp = 0.0;
+    if (height > 0.45) {
+      disp = (height - 0.45) * 0.85; // Exaggerated displacement (bumpy planet)
+    }
+    vec3 newPos = position + normal * disp;
+
     vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
   }
 `;
 const EARTH_FRAG = `
   varying vec2 vUv;
   varying vec3 vNormal;
+  varying vec3 vPosition;
+  varying float vHeight;
   uniform float uTime;
 
-  float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
-  float noise(vec2 p) {
-    vec2 i=floor(p), f=fract(p), u=f*f*(3.0-2.0*f);
-    return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
-  }
-
   void main() {
-    vec2 uv = vUv;
-    float n1 = noise(uv * 4.0 + .5);
-    float n2 = noise(uv * 8.0 - .3);
-    float n3 = noise(uv * 14.0 + 1.1);
-    float land = n1*.5 + n2*.3 + n3*.2;
-    float lat = abs(uv.y - 0.5) * 2.0;
+    float height = vHeight;
 
-    vec3 ocean  = vec3(0.04, 0.14, 0.42);
-    vec3 shallw = vec3(0.05, 0.22, 0.55);
-    vec3 grassL = vec3(0.16, 0.36, 0.10);
-    vec3 desert = vec3(0.60, 0.45, 0.22);
-    vec3 mountain=vec3(0.50, 0.45, 0.40);
-    vec3 snow   = vec3(0.90, 0.93, 1.00);
+    // Direct color matching to the user's reference image
+    vec3 cDeepOcean    = vec3(0.06, 0.28, 0.45); // Dark blue ocean depth
+    vec3 cShallowOcean = vec3(0.25, 0.74, 0.83); // Bright cyan/teal waters
+    vec3 cCoast        = vec3(0.89, 0.86, 0.72); // Creamy white sandy beach
+    vec3 cLowland      = vec3(0.46, 0.72, 0.42); // Mossy green lowland
+    vec3 cMidland      = vec3(0.36, 0.58, 0.30); // Darker forest green
+    vec3 cMountain     = vec3(0.37, 0.36, 0.35); // Bumpy slate grey rock
+    vec3 cSnow         = vec3(0.90, 0.95, 0.92); // White snowy mountain peaks
 
     vec3 col;
-    if (land < 0.42) {
-      col = mix(ocean, shallw, smoothstep(0.3, 0.42, land));
-    } else if (land < 0.52) {
-      col = mix(grassL, desert, noise(uv*20.0+2.0));
+    if (height < 0.42) {
+      col = mix(cDeepOcean, cShallowOcean, height / 0.42);
+    } else if (height < 0.45) {
+      col = mix(cShallowOcean, cCoast, (height - 0.42) / 0.03);
+    } else if (height < 0.56) {
+      col = mix(cCoast, cLowland, (height - 0.45) / 0.11);
+    } else if (height < 0.68) {
+      col = mix(cLowland, cMountain, (height - 0.56) / 0.12);
     } else {
-      col = mix(desert, mountain, smoothstep(0.52, 0.65, land));
+      col = mix(cMountain, cSnow, (height - 0.68) / 0.32);
     }
-    // Ice caps
-    col = mix(col, snow, smoothstep(0.65, 0.85, lat));
 
-    // Lighting
-    vec3 light = normalize(vec3(1.2, 0.4, 0.8));
-    float diff = max(dot(vNormal, light), 0.0);
-    float amb  = 0.18;
-    col = col * (amb + diff * 0.85);
-    // Night side faint city glow
-    if (diff < 0.12) col += vec3(0.08, 0.07, 0.04) * (1.0 - diff / 0.12);
+    // Dynamic solar lighting
+    vec3 lightDir = normalize(vec3(1.2, 0.4, 0.8));
+    float diff = max(dot(vNormal, lightDir), 0.0);
+    float amb = 0.22; // Brighter ambient to lighten up the planet details
+    col = col * (amb + diff * 0.78);
+
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -1056,12 +1097,67 @@ const ATM_FRAG = `
   varying vec2 vUv;
   uniform float uTime;
   void main() {
+    // Soft, volumetric white/grey atmospheric rim glow (matching the reference image)
     vec3 view = normalize(vec3(0,0,1));
     float rim = 1.0 - abs(dot(vNormal, view));
-    rim = pow(rim, 3.5);
-    vec3 atmCol = mix(vec3(0.3,0.6,1.0), vec3(0.1,0.3,0.9), rim);
-    float alpha = rim * 0.75;
+    rim = pow(rim, 3.2);
+    
+    vec3 atmCol = vec3(0.85, 0.88, 0.92); // Soft misty white-grey halo
+    float alpha = rim * 0.48;
+    
     gl_FragColor = vec4(atmCol, alpha);
+  }
+`;
+const CLOUD_VERT = `
+  varying vec3 vPosition;
+  void main() {
+    vPosition = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const CLOUD_FRAG = `
+  varying vec3 vPosition;
+  uniform float uTime;
+
+  float hash(vec3 p) {
+    p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+    p += dot(p.xyz, p.yzx + 19.19);
+    return fract(p.x * p.y * p.z);
+  }
+  float noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), u.x),
+          mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), u.x), u.y),
+      mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), u.x),
+          mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), u.x), u.y),
+      u.z
+    );
+  }
+  float fbm(vec3 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int k = 0; k < 4; k++) {
+      v += a * noise(p);
+      p *= 2.0;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main() {
+    // Scroll clouds slowly in 3D space
+    vec3 scroll = vPosition + vec3(uTime * 0.04, uTime * 0.02, 0.0);
+    float n = fbm(scroll * 1.6);
+    
+    // Create sharp, puffy cloud clumps
+    float alpha = smoothstep(0.46, 0.54, n);
+    if (alpha < 0.01) discard;
+    
+    // Soft, transparent white clouds
+    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha * 0.78);
   }
 `;
 
@@ -1071,32 +1167,41 @@ function buildEarth() {
     0x000510, 0.006
   );
 
-  // Earth sphere
-  const eGeo = new THREE.SphereGeometry(5, 64, 64);
+  // Earth sphere (high-segments geometry for detailed 3D displacements)
+  const eGeo = new THREE.SphereGeometry(5, 120, 120);
   const eMat = new THREE.ShaderMaterial({
-    vertexShader: EARTH_VERT, fragmentShader: EARTH_FRAG,
-    uniforms: { uTime: sharedUniforms.uTime },
+    vertexShader:   EARTH_VERT,
+    fragmentShader: EARTH_FRAG,
+    uniforms:       { uTime: sharedUniforms.uTime },
   });
   const earth = new THREE.Mesh(eGeo, eMat);
   w.group.add(earth);
 
-  // Atmosphere
-  const aGeo = new THREE.SphereGeometry(5.45, 32, 32);
-  const aMat = new THREE.ShaderMaterial({
-    vertexShader: EARTH_VERT, fragmentShader: ATM_FRAG,
-    uniforms: { uTime: sharedUniforms.uTime },
-    transparent:true, depthWrite:false, side:THREE.FrontSide,
-    blending: THREE.AdditiveBlending,
+  // Clouds layer
+  const cGeo = new THREE.SphereGeometry(5.12, 64, 64);
+  const cMat = new THREE.ShaderMaterial({
+    vertexShader:   CLOUD_VERT,
+    fragmentShader: CLOUD_FRAG,
+    uniforms:       { uTime: sharedUniforms.uTime },
+    transparent:    true,
+    depthWrite:     false,
   });
-  w.group.add(new THREE.Mesh(aGeo, aMat));
+  const clouds = new THREE.Mesh(cGeo, cMat);
+  w.group.add(clouds);
 
-  // Outer atmosphere glow
-  const ag2 = new THREE.SphereGeometry(5.9, 16, 16);
-  const am2 = new THREE.MeshBasicMaterial({
-    color:0x4488ff, transparent:true, opacity:.04,
-    blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.BackSide,
+  // Atmosphere (BackSide rendering for volumetric halo bleed)
+  const aGeo = new THREE.SphereGeometry(5.42, 48, 48);
+  const aMat = new THREE.ShaderMaterial({
+    vertexShader:   EARTH_VERT,
+    fragmentShader: ATM_FRAG,
+    uniforms:       { uTime: sharedUniforms.uTime },
+    transparent:    true,
+    depthWrite:     false,
+    side:           THREE.BackSide,
+    blending:       THREE.AdditiveBlending,
   });
-  w.group.add(new THREE.Mesh(ag2, am2));
+  const atmosphere = new THREE.Mesh(aGeo, aMat);
+  w.group.add(atmosphere);
 
   // Satellites (particle ring orbiting)
   const SAT = 80;
@@ -1135,6 +1240,7 @@ function buildEarth() {
 
   w.tick = (t) => {
     earth.rotation.y = t * 0.04;
+    clouds.rotation.y = t * 0.048;
     sats.rotation.y  = t * 0.06;
     sats.rotation.x  = Math.sin(t*.08)*.1;
   };
