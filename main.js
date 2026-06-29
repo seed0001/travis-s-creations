@@ -275,126 +275,208 @@ async function showWorld(idx) {
 // ─────────────────────────────────────────────────────────────
 // WORLD 0 — OUTER GALAXY
 // ─────────────────────────────────────────────────────────────
+// Helper to generate a procedural radial gradient for volumetric core glows
+function createCoreGlowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  
+  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+  grad.addColorStop(0.15, 'rgba(255, 210, 150, 0.85)');
+  grad.addColorStop(0.4, 'rgba(217, 70, 239, 0.25)'); // Magenta halo
+  grad.addColorStop(0.7, 'rgba(59, 130, 246, 0.05)');  // Blue outer halo
+  grad.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
+  
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  
+  const tex = new THREE.CanvasTexture(canvas);
+  return tex;
+}
+
 function buildGalaxy() {
   const w = new World('Galaxy',
     { x:0,  y:6,  z:32 }, { x:0, y:0, z:0 },
     0x030305, 0.004
   );
 
-  const COUNT = 120000;
   const ARMS = 3;
   const R = 25;
-  const pos = new Float32Array(COUNT * 3);
-  const col = new Float32Array(COUNT * 3);
-  const siz = new Float32Array(COUNT);
 
-  const cCore   = new THREE.Color(0xfff3d6); // Ivory/Cream
-  const cInner  = new THREE.Color(0xff8c55); // Warm Coral
-  const cMid    = new THREE.Color(0xd946ef); // Neon Magenta
-  const cOuter  = new THREE.Color(0x3b82f6); // Royal Blue
-  const cEdge   = new THREE.Color(0x0f172a); // Deep Space Navy
+  // 1. LAYER 1: STARS (100,000 sharp, bright particles)
+  const STAR_COUNT = 100000;
+  const starPos = new Float32Array(STAR_COUNT * 3);
+  const starCol = new Float32Array(STAR_COUNT * 3);
+  const starSiz = new Float32Array(STAR_COUNT);
 
-  for (let i = 0; i < COUNT; i++) {
-    // 15% of particles form a dense spherical core bulge
-    const isCore = i < COUNT * 0.15;
-    let x, y, z;
-    let radius;
+  const cCore   = new THREE.Color(0xfff5e0); // Cream
+  const cInner  = new THREE.Color(0xff7c43); // Warm Orange
+  const cMid    = new THREE.Color(0xd946ef); // Magenta
+  const cOuter  = new THREE.Color(0x3b82f6); // Blue
+  const cEdge   = new THREE.Color(0x0a0f2d); // Dark Navy
+
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const isCore = i < STAR_COUNT * 0.12;
+    let radius, angle;
 
     if (isCore) {
-      // Spherical distribution concentrated at center
-      radius = Math.pow(Math.random(), 2.5) * 3.5;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos((Math.random() * 2) - 1);
-      
-      x = Math.sin(phi) * Math.cos(theta) * radius;
-      y = Math.cos(phi) * radius * 0.7; // slightly flattened
-      z = Math.sin(phi) * Math.sin(theta) * radius;
+      radius = Math.pow(Math.random(), 2.2) * 3.5;
+      angle = Math.random() * Math.PI * 2;
     } else {
-      // Spiral arms using logarithmic/spin distribution
       radius = Math.pow(Math.random(), 1.0) * R;
       const spinAngle = radius * 1.05;
       const armIndex = i % ARMS;
       const branchAngle = (armIndex / ARMS) * Math.PI * 2;
-      const angle = branchAngle + spinAngle;
-
-      // Circular/polar scatter to prevent grid/axial line artifacts
-      const power = 3.6;
-      const spreadRadius = Math.pow(Math.random(), power) * 0.48 * (radius + 1.2);
-      const spreadAngle  = Math.random() * Math.PI * 2;
-      
-      const spreadX = Math.cos(spreadAngle) * spreadRadius;
-      const spreadZ = Math.sin(spreadAngle) * spreadRadius;
-      const spreadY = Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.28 * (radius + 1.2);
-
-      x = Math.cos(angle) * radius + spreadX;
-      y = spreadY;
-      z = Math.sin(angle) * radius + spreadZ;
+      angle = branchAngle + spinAngle;
     }
 
-    pos[i * 3]     = x;
-    pos[i * 3 + 1] = y;
-    pos[i * 3 + 2] = z;
+    const power = 3.6;
+    const spreadRadius = isCore ? 0.0 : Math.pow(Math.random(), power) * 0.40 * (radius + 1.2);
+    const spreadAngle  = Math.random() * Math.PI * 2;
 
-    // Color interpolation along radius
-    const t = isCore ? (radius / 3.5) * 0.2 : radius / R;
+    const x = Math.cos(angle) * radius + (isCore ? (Math.random() - 0.5) * radius : Math.cos(spreadAngle) * spreadRadius);
+    const y = isCore ? (Math.random() - 0.5) * radius * 0.6 : Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.22 * (radius + 1.2);
+    const z = Math.sin(angle) * radius + (isCore ? (Math.random() - 0.5) * radius : Math.sin(spreadAngle) * spreadRadius);
+
+    starPos[i * 3]     = x;
+    starPos[i * 3 + 1] = y;
+    starPos[i * 3 + 2] = z;
+
+    // Color gradient
+    const t = isCore ? (radius / 3.5) * 0.15 : radius / R;
     let color;
+    if (t < 0.15) color = cCore.clone().lerp(cInner, t / 0.15);
+    else if (t < 0.45) color = cInner.clone().lerp(cMid, (t - 0.15) / 0.30);
+    else if (t < 0.8) color = cMid.clone().lerp(cOuter, (t - 0.45) / 0.35);
+    else color = cOuter.clone().lerp(cEdge, (t - 0.8) / 0.20);
 
-    if (t < 0.15) {
-      color = cCore.clone().lerp(cInner, t / 0.15);
-    } else if (t < 0.45) {
-      color = cInner.clone().lerp(cMid, (t - 0.15) / 0.30);
-    } else if (t < 0.8) {
-      color = cMid.clone().lerp(cOuter, (t - 0.45) / 0.35);
-    } else {
-      color = cOuter.clone().lerp(cEdge, (t - 0.8) / 0.20);
-    }
-
-    // Add slight brightness variation + dust lanes (dimming)
     const noise = Math.random();
-    let brightness = 0.4 + noise * 0.6;
-    
-    // Simulate dark dust lane gaps along arms
-    const theta = Math.atan2(z, x);
-    const distToArm = Math.sin(theta * ARMS - radius * 1.05);
-    if (!isCore && distToArm > 0.6 && distToArm < 0.85) {
-      brightness *= 0.18; // Very dark dust lane
+    let brightness = 0.5 + noise * 0.5;
+
+    // Dust lane simulation (dimming)
+    if (!isCore) {
+      const theta = Math.atan2(z, x);
+      const distToArm = Math.sin(theta * ARMS - radius * 1.05);
+      if (distToArm > 0.65 && distToArm < 0.85) brightness *= 0.15;
     }
 
-    col[i * 3]     = color.r * brightness;
-    col[i * 3 + 1] = color.g * brightness;
-    col[i * 3 + 2] = color.b * brightness;
+    starCol[i * 3]     = color.r * brightness;
+    starCol[i * 3 + 1] = color.g * brightness;
+    starCol[i * 3 + 2] = color.b * brightness;
 
-    // Sizes: mix of fine dust (95%) and bright glowing stars (5%)
-    const isBrightStar = Math.random() < 0.04;
-    siz[i] = isBrightStar 
-      ? 2.2 + Math.random() * 2.8 
-      : 0.45 + Math.random() * 0.8;
+    starSiz[i] = Math.random() < 0.03 ? 2.5 + Math.random() * 2.5 : 0.4 + Math.random() * 0.7;
   }
 
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('aColor',   new THREE.BufferAttribute(col, 3));
-  geo.setAttribute('aSize',    new THREE.BufferAttribute(siz, 1));
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  starGeo.setAttribute('aColor',   new THREE.BufferAttribute(starCol, 3));
+  starGeo.setAttribute('aSize',    new THREE.BufferAttribute(starSiz, 1));
 
-  const mat = new THREE.ShaderMaterial({
+  const starMat = new THREE.ShaderMaterial({
     vertexShader:   PARTICLE_VERT,
     fragmentShader: PARTICLE_FRAG,
-    uniforms:       sharedUniforms,
+    uniforms:       { ...sharedUniforms, uScene: { value: 0.0 } },
     transparent:    true,
     depthWrite:     false,
     blending:       THREE.AdditiveBlending,
   });
 
-  const pts = new THREE.Points(geo, mat);
-  w.group.add(pts);
+  const stars = new THREE.Points(starGeo, starMat);
+  w.group.add(stars);
+
+
+  // 2. LAYER 2: VOLUMETRIC NEBULA GAS (50,000 large, ultra-faint particles)
+  const GAS_COUNT = 50000;
+  const gasPos = new Float32Array(GAS_COUNT * 3);
+  const gasCol = new Float32Array(GAS_COUNT * 3);
+  const gasSiz = new Float32Array(GAS_COUNT);
+
+  const cGasCore  = new THREE.Color(0xff8c55); // Orange/coral
+  const cGasMid   = new THREE.Color(0xec4899); // Pink
+  const cGasOuter = new THREE.Color(0x6366f1); // Indigo
+
+  for (let i = 0; i < GAS_COUNT; i++) {
+    const radius = Math.pow(Math.random(), 1.2) * R;
+    const spinAngle = radius * 1.05;
+    const armIndex = i % ARMS;
+    const branchAngle = (armIndex / ARMS) * Math.PI * 2;
+    const angle = branchAngle + spinAngle;
+
+    // Wider circular scatter for gas than stars to create soft volumetric backing
+    const power = 2.2;
+    const spreadRadius = Math.pow(Math.random(), power) * 0.75 * (radius + 1.5);
+    const spreadAngle  = Math.random() * Math.PI * 2;
+
+    const x = Math.cos(angle) * radius + Math.cos(spreadAngle) * spreadRadius;
+    const y = Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.35 * (radius + 1.5);
+    const z = Math.sin(angle) * radius + Math.sin(spreadAngle) * spreadRadius;
+
+    gasPos[i * 3]     = x;
+    gasPos[i * 3 + 1] = y;
+    gasPos[i * 3 + 2] = z;
+
+    // Soft gas color transitions
+    const t = radius / R;
+    let color;
+    if (t < 0.3) color = cGasCore.clone().lerp(cGasMid, t / 0.3);
+    else color = cGasMid.clone().lerp(cGasOuter, (t - 0.3) / 0.7);
+
+    // Dynamic gas density falloff
+    let density = (1.0 - t) * 0.045; // Extremely faint per-particle so they merge smoothly
+    if (Math.random() < 0.1) density *= 0.5; // add patchiness
+
+    gasCol[i * 3]     = color.r * density;
+    gasCol[i * 3 + 1] = color.g * density;
+    gasCol[i * 3 + 2] = color.b * density;
+
+    // Gas particles are physically massive
+    gasSiz[i] = 12.0 + Math.random() * 16.0;
+  }
+
+  const gasGeo = new THREE.BufferGeometry();
+  gasGeo.setAttribute('position', new THREE.BufferAttribute(gasPos, 3));
+  gasGeo.setAttribute('aColor',   new THREE.BufferAttribute(gasCol, 3));
+  gasGeo.setAttribute('aSize',    new THREE.BufferAttribute(gasSiz, 1));
+
+  const gasMat = new THREE.ShaderMaterial({
+    vertexShader:   PARTICLE_VERT,
+    fragmentShader: PARTICLE_FRAG,
+    uniforms:       { ...sharedUniforms, uScene: { value: 0.0 } },
+    transparent:    true,
+    depthWrite:     false,
+    blending:       THREE.AdditiveBlending,
+  });
+
+  const gasClouds = new THREE.Points(gasGeo, gasMat);
+  w.group.add(gasClouds);
+
+
+  // 3. LAYER 3: VOLUMETRIC CORE GLOW BILLBOARD
+  const coreGlowGeo = new THREE.PlaneGeometry(10, 10);
+  const coreGlowMat = new THREE.MeshBasicMaterial({
+    color:       0xffba90,
+    transparent: true,
+    opacity:     0.18,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
+    map:         createCoreGlowTexture(),
+  });
+  const coreGlow = new THREE.Mesh(coreGlowGeo, coreGlowMat);
+  w.group.add(coreGlow);
 
   // Background stars
-  addBackgroundStars(w.group, 6000, 50, 250);
+  addBackgroundStars(w.group, 5000, 50, 250);
 
   w.build = () => {};
   w.tick = (t) => {
-    pts.rotation.y = t * 0.012;
-    pts.rotation.x = Math.sin(t * 0.05) * 0.03 + 0.08;
+    // Independent orbital winding
+    stars.rotation.y = t * 0.008;
+    gasClouds.rotation.y = t * 0.008;
+    
+    // Core glow faces camera dynamically
+    coreGlow.lookAt(camera.position);
   };
   worlds.push(w);
 }
