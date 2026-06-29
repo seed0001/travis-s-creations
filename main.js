@@ -1318,23 +1318,80 @@ function buildCity() {
     0x010108, 0.012
   );
 
-  // Grid of buildings using InstancedMesh (steel-blue base color for visibility)
+  // 1. Grid of buildings using InstancedMesh with Procedural Window Grid Shader
   const ROWS = 18, COLS = 18;
   const SPACING = 2.2;
   const bGeo = new THREE.BoxGeometry(1, 1, 1);
+  
+  // Base PBR material modified with custom GLSL for window grids
   const bMat = new THREE.MeshStandardMaterial({
-    color: 0x475569, emissive: 0x1e293b, emissiveIntensity: 0.55,
-    roughness: 0.8, metalness: 0.3,
+    color: 0x111622,
+    roughness: 0.8,
+    metalness: 0.2
   });
+
+  bMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = sharedUniforms.uTime;
+    
+    // Inject hash helper and uTime uniform
+    shader.fragmentShader = `
+      uniform float uTime;
+      float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+    ` + shader.fragmentShader;
+    
+    // Replace emissive fragment logic with custom window coordinates
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <emissivemap_fragment>',
+      `
+      #include <emissivemap_fragment>
+      
+      // Window grid only on vertical side faces
+      vec3 fNormal = normalize(vNormal);
+      float isVertical = step(0.1, length(fNormal.xz));
+      
+      if (isVertical > 0.5) {
+        // Draw 5 columns and 16 rows of windows per building face
+        vec2 grid = vec2(5.0, 16.0);
+        vec2 winUv = fract(vUv * grid);
+        vec2 cellId = floor(vUv * grid);
+        
+        // Window border mask
+        float winMask = step(0.18, winUv.x) * step(0.18, 1.0 - winUv.x) *
+                        step(0.15, winUv.y) * step(0.15, 1.0 - winUv.y);
+                        
+        // Randomize on/off state using a hash of cell ID and position
+        float rand = hash2(cellId + vViewPosition.xy * 0.1);
+        
+        if (rand > 0.65 && winMask > 0.5) {
+          float colorSelect = fract(rand * 3.0);
+          vec3 wCol;
+          if (colorSelect < 0.33) {
+            wCol = vec3(1.0, 0.65, 0.25); // Amber windows
+          } else if (colorSelect < 0.66) {
+            wCol = vec3(0.25, 0.80, 1.0); // Cyan windows
+          } else {
+            wCol = vec3(1.0, 0.95, 0.75); // Warm white/yellow windows
+          }
+          // Twinkle effect
+          float twinkle = 0.75 + sin(uTime * 0.6 + rand * 12.0) * 0.25;
+          totalEmissiveRadiance += wCol * 2.2 * twinkle;
+        }
+      }
+      `
+    );
+  };
+
   const iMesh = new THREE.InstancedMesh(bGeo, bMat, ROWS * COLS);
   const dummy = new THREE.Object3D();
 
   const buildingData = [];
+  const beaconPos = [];
+  const beaconCol = [];
+  const beaconPhase = [];
 
   let idx = 0;
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
-      // Skip some for roads
       const isRoad = (row % 4 === 0) || (col % 4 === 0);
       if (isRoad) { dummy.scale.set(0,.001,0); dummy.updateMatrix(); iMesh.setMatrixAt(idx++, dummy.matrix); continue; }
 
@@ -1347,21 +1404,83 @@ function buildCity() {
       dummy.updateMatrix();
       iMesh.setMatrixAt(idx, dummy.matrix);
 
-      // Emissive color per building
-      const hue = Math.random();
-      const emC = hue < .3
-        ? new THREE.Color(0x2244ff)
-        : hue < .6 ? new THREE.Color(0xffaa22)
-        : new THREE.Color(0x22ffcc);
-      iMesh.setColorAt(idx, emC.multiplyScalar(.08 + Math.random()*.12));
-
-      buildingData.push({ idx, x, z, h, phase: Math.random()*Math.PI*2, rate: .3+Math.random()*.7 });
+      buildingData.push({ idx, x, z, h });
+      
+      // Add blinking warning beacons on top of tall buildings
+      if (h > 3.2) {
+        // Position at building center top
+        beaconPos.push(x, h - 0.5 + 0.08, z);
+        
+        // Randomize beacon colors (Red, Cyan, Green)
+        const rand = Math.random();
+        if (rand < 0.5) {
+          beaconCol.push(1.0, 0.1, 0.15); // Red warning light
+        } else if (rand < 0.8) {
+          beaconCol.push(0.0, 0.95, 1.0); // Cyan light
+        } else {
+          beaconCol.push(0.1, 1.0, 0.25); // Green light
+        }
+        
+        beaconPhase.push(Math.random() * 15.0);
+      }
       idx++;
     }
   }
   iMesh.instanceMatrix.needsUpdate = true;
-  if (iMesh.instanceColor) iMesh.instanceColor.needsUpdate = true;
   w.group.add(iMesh);
+
+
+  // 2. Rooftop Warning Beacons Points System
+  if (beaconPos.length > 0) {
+    const beaconGeometry = new THREE.BufferGeometry();
+    beaconGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(beaconPos), 3));
+    beaconGeometry.setAttribute('aColor',   new THREE.BufferAttribute(new Float32Array(beaconCol), 3));
+    beaconGeometry.setAttribute('aPhase',   new THREE.BufferAttribute(new Float32Array(beaconPhase), 1));
+
+    const BEACON_VERT = `
+      attribute vec3  aColor;
+      attribute float aPhase;
+      varying vec3    vColor;
+      varying float   vAlpha;
+      uniform float   uTime;
+      uniform float   uPR;
+      void main() {
+        vColor = aColor;
+        // Aviation beacons blink warning pattern (4.5 Hz)
+        vAlpha = 0.3 + sin(uTime * 4.5 + aPhase) * 0.7;
+        if (vAlpha < 0.38) vAlpha = 0.08; // sharp flashing transitions
+        
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = clamp(2.5 * uPR * (150.0 / -mv.z), 1.0, 6.0);
+        gl_Position = projectionMatrix * mv;
+      }
+    `;
+    const BEACON_FRAG = `
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main() {
+        vec2 uv = gl_PointCoord - 0.5;
+        float d = length(uv);
+        if (d > 0.5) discard;
+        float cutoff = smoothstep(0.5, 0.3, d);
+        gl_FragColor = vec4(vColor, cutoff * vAlpha * 0.95);
+      }
+    `;
+
+    const beaconMat = new THREE.ShaderMaterial({
+      vertexShader:   BEACON_VERT,
+      fragmentShader: BEACON_FRAG,
+      uniforms:       { uTime: sharedUniforms.uTime, uPR: { value: window.devicePixelRatio || 1.0 } },
+      transparent:    true,
+      depthWrite:     false,
+      depthTest:      true,
+      blending:       THREE.AdditiveBlending,
+    });
+
+    const beacons = new THREE.Points(beaconGeometry, beaconMat);
+    w.group.add(beacons);
+  }
+
 
   // Ground plane (dark tarmac)
   const gGeo = new THREE.PlaneGeometry(60, 60, 1, 1);
@@ -1371,7 +1490,7 @@ function buildCity() {
   ground.position.y = -.5;
   w.group.add(ground);
 
-  // Road grid glow lines
+  // Road grid lines
   const linePts = [];
   for (let r = 0; r <= ROWS; r++) {
     if (r % 4 !== 0) continue;
@@ -1391,8 +1510,8 @@ function buildCity() {
   w.group.add(new THREE.LineSegments(lGeo, lMat));
 
 
-  // 200,000 NPC STREET CROWDS (flocking along road grid)
-  const NPC_COUNT = 200000;
+  // 3. DIALED DOWN STREET NPCs (Only 1,000 sparse particles)
+  const NPC_COUNT = 1000;
   const npcPos   = new Float32Array(NPC_COUNT * 3);
   const npcDir   = new Float32Array(NPC_COUNT * 3);
   const npcLane  = new Float32Array(NPC_COUNT);
@@ -1406,7 +1525,6 @@ function buildCity() {
 
   for (let i = 0; i < NPC_COUNT; i++) {
     npcPhase[i] = Math.random() * 100.0;
-    // Lane offset (-0.35 to +0.35)
     npcLane[i]  = (Math.random() - 0.5) * 0.7;
 
     const isHorizontal = Math.random() < 0.5;
@@ -1414,7 +1532,7 @@ function buildCity() {
       const z = roadRows[Math.floor(Math.random() * roadRows.length)];
       const x = (Math.random() - 0.5) * 40.0;
       npcPos[i * 3]     = x;
-      npcPos[i * 3 + 1] = -0.42; // strictly street level
+      npcPos[i * 3 + 1] = -0.42;
       npcPos[i * 3 + 2] = z;
       
       const speed = 0.6 + Math.random() * 1.2;
@@ -1447,7 +1565,7 @@ function buildCity() {
     uniforms:       { ...sharedUniforms, uScene: { value: 3.0 } },
     transparent:    true,
     depthWrite:     false,
-    depthTest:      true, // let buildings occlude NPCs behind them!
+    depthTest:      true,
     blending:       THREE.AdditiveBlending,
   });
 
@@ -1455,15 +1573,14 @@ function buildCity() {
   w.group.add(npcSystem);
 
 
-  // Cyberpunk night-glow lighting (avoids overexposure/washed out streets)
-  w.group.add(new THREE.AmbientLight(0x0f172a, 0.85)); // dark slate-blue sky
-  const dl = new THREE.DirectionalLight(0x38bdf8, 1.25); // cool cyan moon-glow
+  // Cyberpunk night-glow lighting (balanced, high-contrast)
+  w.group.add(new THREE.AmbientLight(0x0f172a, 0.85));
+  const dl = new THREE.DirectionalLight(0x38bdf8, 1.25);
   dl.position.set(10, 30, 10);
   w.group.add(dl);
 
   w.tick = (t) => {
-    // Pulse building emissive
-    bMat.emissiveIntensity = 0.3 + Math.sin(t * 0.5) * 0.15;
+    // Emissive intensity is handled inside onBeforeCompile shader dynamically!
   };
   worlds.push(w);
 }
