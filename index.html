@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Travis · seed0001</title>
+  <meta name="description" content="Travis (seed0001) — AI systems engineer. Multi-agent systems, knowledge graphs, full-stack applications."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+  <!-- LOADER -->
+  <div id="loader">
+    <div class="ld-box">
+      <div class="ld-logo">T</div>
+      <div class="ld-progress"><div class="ld-fill" id="ldFill"></div></div>
+      <div class="ld-msg" id="ldMsg">Initializing…</div>
+    </div>
+  </div>
+
+  <!-- TRANSITION OVERLAY (black film cut between worlds) -->
+  <div id="tOverlay"></div>
+
+  <!-- THREE.JS CANVAS -->
+  <canvas id="c"></canvas>
+
+  <!-- OVERLAY UI -->
+  <div id="ui">
+
+    <!-- NAV -->
+    <nav id="nav">
+      <button class="nav-logo" id="navHome">T.</button>
+      <div class="nav-scenes">
+        <button class="ns active" data-i="0" title="Outer Galaxy">Galaxy</button>
+        <button class="ns" data-i="1" title="Solar System">Solar</button>
+        <button class="ns" data-i="2" title="Earth Orbit">Earth</button>
+        <button class="ns" data-i="3" title="City Network">City</button>
+        <button class="ns" data-i="4" title="Living Cell">Cell</button>
+        <button class="ns" data-i="5" title="Molecular">Molecule</button>
+      </div>
+      <a href="https://github.com/seed0001" target="_blank" rel="noopener" class="nav-gh">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        GitHub
+      </a>
+    </nav>
+
+    <!-- SCALE LABEL (bottom-left, changes per scene) -->
+    <div id="scale-label">
+      <div class="sl-num" id="slNum">∞</div>
+      <div class="sl-unit" id="slUnit">light years</div>
+    </div>
+
+    <!-- SECTION 0: GALAXY / HERO -->
+    <section class="panel active" id="p0">
+      <div class="p0-content">
+        <div class="p0-eyebrow">
+          <span class="pulse-dot"></span>
+          AI Systems Engineer &amp; Developer
+        </div>
+        <h1 class="p0-name">Travis<span class="p0-slash">·</span><span class="p0-handle">seed0001</span></h1>
+        <p class="p0-tagline">Building things that think.</p>
+        <div class="p0-btns">
+          <button class="btn-p" id="heroCta">Explore my work</button>
+          <a href="https://github.com/seed0001" target="_blank" rel="noopener" class="btn-s">GitHub ↗</a>
+        </div>
+      </div>
+      <div class="p0-scroll">
+        <div class="p0-scroll-line"></div>
+        <span>Scroll to explore</span>
+      </div>
+    </section>
+
+    <!-- SECTION 1: SOLAR SYSTEM / ABOUT -->
+    <section class="panel" id="p1">
+      <div class="side-panel left">
+        <p class="sp-label">01 — About</p>
+        <h2 class="sp-title">What I build</h2>
+        <p class="sp-body">I'm an AI systems engineer and developer focused on building production software that ships. My work lives at the intersection of AI research and practical engineering.</p>
+        <p class="sp-body">From multi-agent frameworks like <span class="hl">workshop-RT</span> to knowledge graph engines like <span class="hl">SeedKG</span> — I build systems that are meant to run, not just demo.</p>
+        <div class="sp-stats">
+          <div class="sp-stat"><span class="ss-n" data-target="35" id="s1n1">0</span><span class="ss-l">Repositories</span></div>
+          <div class="sp-stat"><span class="ss-n" data-target="14">0</span><span class="ss-l">Months active</span></div>
+          <div class="sp-stat"><span class="ss-n" data-target="3">0</span><span class="ss-l">Languages</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2: EARTH / SKILLS -->
+    <section class="panel" id="p2">
+      <div class="side-panel right">
+        <p class="sp-label">02 — Skills</p>
+        <h2 class="sp-title">Tech Stack</h2>
+        <div class="sk-rows">
+          <div class="sk-row">
+            <div class="sk-label"><span class="sk-dot" style="--c:#3b82f6"></span>Python<span class="sk-pct">90%</span></div>
+            <div class="sk-track"><div class="sk-fill" style="--w:90%;--c:#3b82f6"></div></div>
+          </div>
+          <div class="sk-row">
+            <div class="sk-label"><span class="sk-dot" style="--c:#8b5cf6"></span>TypeScript<span class="sk-pct">80%</span></div>
+            <div class="sk-track"><div class="sk-fill" style="--w:80%;--c:#8b5cf6"></div></div>
+          </div>
+          <div class="sk-row">
+            <div class="sk-label"><span class="sk-dot" style="--c:#f59e0b"></span>JavaScript<span class="sk-pct">75%</span></div>
+            <div class="sk-track"><div class="sk-fill" style="--w:75%;--c:#f59e0b"></div></div>
+          </div>
+        </div>
+        <div class="sk-chips">
+          <span class="chip">Multi-Agent Systems</span><span class="chip">Knowledge Graphs</span>
+          <span class="chip">LLM Orchestration</span><span class="chip">FastAPI</span>
+          <span class="chip">Node.js</span><span class="chip">React</span>
+          <span class="chip">Three.js</span><span class="chip">WebSockets</span>
+          <span class="chip">Human Simulation</span><span class="chip">Segmentation</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: CITY / PROJECTS -->
+    <section class="panel" id="p3">
+      <div class="proj-panel">
+        <div class="proj-header">
+          <p class="sp-label">03 — Work</p>
+          <h2 class="sp-title" style="margin-bottom:6px">Featured Projects</h2>
+          <p class="proj-status" id="projStatus">Loading from GitHub…</p>
+        </div>
+        <div class="proj-grid" id="projectsGrid"></div>
+        <a href="https://github.com/seed0001?tab=repositories" target="_blank" rel="noopener" class="btn-s" style="margin-top:12px;display:inline-flex">
+          All repositories ↗
+        </a>
+      </div>
+    </section>
+
+    <!-- SECTION 4: CELL / AI SYSTEMS -->
+    <section class="panel" id="p4">
+      <div class="side-panel left">
+        <p class="sp-label">04 — AI Systems</p>
+        <h2 class="sp-title">The Deep Work</h2>
+        <p class="sp-body">My most serious work is in autonomous systems. Building things that can reason, coordinate, and act independently.</p>
+        <div class="ai-items">
+          <div class="ai-item">
+            <div class="ai-tag py">Python</div>
+            <div class="ai-info">
+              <div class="ai-name">workshop-RT</div>
+              <div class="ai-desc">Multi-agent real-time framework. Autonomous workers coordinate over WebSockets.</div>
+            </div>
+          </div>
+          <div class="ai-item">
+            <div class="ai-tag py">Python</div>
+            <div class="ai-info">
+              <div class="ai-name">SeedKG</div>
+              <div class="ai-desc">Knowledge graph engine. Entity extraction, semantic queries, graph traversal.</div>
+            </div>
+          </div>
+          <div class="ai-item">
+            <div class="ai-tag py">Python</div>
+            <div class="ai-info">
+              <div class="ai-name">human-sim</div>
+              <div class="ai-desc">Human cognition simulation. Models decision-making, emotional state, social dynamics.</div>
+            </div>
+          </div>
+          <div class="ai-item">
+            <div class="ai-tag py">Python</div>
+            <div class="ai-info">
+              <div class="ai-name">seg-bot</div>
+              <div class="ai-desc">ML segmentation pipeline for automated content classification and routing.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 5: MOLECULE / CONTACT -->
+    <section class="panel" id="p5">
+      <div class="contact-panel">
+        <p class="sp-label">05 — Contact</p>
+        <h2 class="sp-title">Let's Connect</h2>
+        <p class="sp-body" style="max-width:480px;margin-bottom:32px">Open to interesting problems, collaborations, and conversations about AI, systems architecture, and the future of software.</p>
+        <a href="https://github.com/seed0001" target="_blank" rel="noopener" class="gh-card">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          <div>
+            <div class="ghc-label">Find me on</div>
+            <div class="ghc-val">github.com/seed0001</div>
+          </div>
+          <span class="ghc-arr">→</span>
+        </a>
+        <div class="contact-skills">
+          <span class="chip">Python</span><span class="chip">TypeScript</span>
+          <span class="chip">Multi-Agent AI</span><span class="chip">Knowledge Graphs</span>
+          <span class="chip">FastAPI</span><span class="chip">Node.js</span>
+          <span class="chip">Three.js</span><span class="chip">LLMs</span>
+        </div>
+        <p class="foot-note">© 2026 Travis / seed0001</p>
+      </div>
+    </section>
+
+    <!-- NAVIGATION DOTS -->
+    <div id="dots">
+      <button class="dot active" data-i="0"></button>
+      <button class="dot" data-i="1"></button>
+      <button class="dot" data-i="2"></button>
+      <button class="dot" data-i="3"></button>
+      <button class="dot" data-i="4"></button>
+      <button class="dot" data-i="5"></button>
+    </div>
+
+  </div><!-- /ui -->
+
+  <!-- PROJECT MODAL -->
+  <div id="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="modal-box">
+      <button class="mx" id="modalX" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+      <div class="ml" id="mLang"></div>
+      <h3 id="mTitle" class="mt"></h3>
+      <p id="mDesc" class="md"></p>
+      <div id="mMeta" class="mm"></div>
+      <div id="mTopics" class="mtp"></div>
+      <a id="mLink" target="_blank" rel="noopener" class="btn-p modal-gh">Open on GitHub ↗</a>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
