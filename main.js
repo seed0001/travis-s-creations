@@ -1502,9 +1502,15 @@ const CROWD_FRAG = `
 
 function groundHeight(x, z) {
   const distSq = x * x + z * z;
-  const wave = Math.sin(x * 0.12) * Math.cos(z * 0.12) * 1.5 + Math.sin(x * 0.04) * 0.8;
-  // Subtle curvature to create a planet sphere feel
-  const curvature = -distSq * 0.00035;
+  const dist = Math.sqrt(distSq);
+  
+  // Smoothly blend waves: flat in the center (dist < 6), wavy further out
+  const blend = Math.min(1.0, Math.max(0.0, (dist - 6.0) / 12.0));
+  const wave = (Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2.2 + Math.sin(x * 0.03) * 1.2) * blend;
+  
+  // Curvature: gentler near the center, bending down beyond radius 40
+  const curvature = -distSq * 0.00022;
+  
   return wave + curvature;
 }
 
@@ -1535,6 +1541,46 @@ function buildEcosystem() {
     metalness: 0.1,
     flatShading: true
   });
+
+  // Inject custom shader logic for height-based terrain color blending
+  gMat.onBeforeCompile = (shader) => {
+    shader.vertexShader = `
+      varying float vY;
+    ` + shader.vertexShader;
+    
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <fog_vertex>',
+      `
+      #include <fog_vertex>
+      vY = transformed.y;
+      `
+    );
+
+    shader.fragmentShader = `
+      varying float vY;
+    ` + shader.fragmentShader;
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <color_fragment>',
+      `
+      #include <color_fragment>
+      // Height-based blending: dark green valleys, rich green slopes, lighter green meadow crests
+      float hFactor = clamp((vY + 2.0) / 6.0, 0.0, 1.0);
+      vec3 valleyColor = vec3(0.06, 0.18, 0.08); // dark moss
+      vec3 slopeColor = vec3(0.12, 0.32, 0.16);  // standard forest floor
+      vec3 crestColor = vec3(0.18, 0.44, 0.22);  // bright high meadow
+      
+      vec3 terrainColor;
+      if (hFactor < 0.5) {
+        terrainColor = mix(valleyColor, slopeColor, hFactor * 2.0);
+      } else {
+        terrainColor = mix(slopeColor, crestColor, (hFactor - 0.5) * 2.0);
+      }
+      diffuseColor.rgb = terrainColor;
+      `
+    );
+  };
+
   const ground = new THREE.Mesh(gGeo, gMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.5;
@@ -1546,7 +1592,6 @@ function buildEcosystem() {
   grassGeo.translate(0, 0.25, 0); // shift pivot to base
 
   const grassMat = new THREE.MeshStandardMaterial({
-    color: 0x22c55e,
     roughness: 0.7,
     metalness: 0.1,
     side: THREE.DoubleSide
@@ -1571,6 +1616,15 @@ function buildEcosystem() {
 
   const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, 8000);
   const grassDummy = new THREE.Object3D();
+  
+  const grassColors = [
+    new THREE.Color(0x22c55e), // vibrant
+    new THREE.Color(0x16a34a), // medium
+    new THREE.Color(0x15803d), // dark green
+    new THREE.Color(0x4ade80), // light green
+    new THREE.Color(0x86efac)  // minty green
+  ];
+
   for (let i = 0; i < 8000; i++) {
     const r = Math.random() * 45;
     const theta = Math.random() * Math.PI * 2;
@@ -1588,59 +1642,125 @@ function buildEcosystem() {
     grassDummy.scale.set(scale, scale, scale);
     grassDummy.updateMatrix();
     grassMesh.setMatrixAt(i, grassDummy.matrix);
+
+    const col = grassColors[Math.floor(Math.random() * grassColors.length)];
+    grassMesh.setColorAt(i, col);
   }
   grassMesh.instanceMatrix.needsUpdate = true;
+  grassMesh.instanceColor.needsUpdate = true;
   grassMesh.castShadow = true;
   grassMesh.receiveShadow = true;
   w.group.add(grassMesh);
 
-  // 3. Performant Instanced Forest Trees (400 trees)
-  const trunkGeo = new THREE.CylinderGeometry(0.12, 0.2, 3.5, 6);
+  // 3. Performant Instanced Forest Trees (400 trees total: 200 pine, 200 round)
+  const trunkGeo = new THREE.CylinderGeometry(0.1, 0.16, 3.5, 6);
   trunkGeo.translate(0, 1.75, 0);
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3e2e, roughness: 0.9 });
 
-  const leafGeo = new THREE.ConeGeometry(1.2, 3.0, 5);
-  leafGeo.translate(0, 1.5, 0);
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0x165b33, roughness: 0.8, flatShading: true });
+  const pineLeafGeo = new THREE.ConeGeometry(1.2, 3.0, 5);
+  pineLeafGeo.translate(0, 1.5, 0);
+  const pineLeafMat = new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true });
 
-  const treeCount = 400;
-  const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, treeCount);
-  const leavesMesh = new THREE.InstancedMesh(leafGeo, leafMat, treeCount);
+  const roundLeafGeo = new THREE.IcosahedronGeometry(1.1, 1);
+  roundLeafGeo.translate(0, 1.3, 0);
+  const roundLeafMat = new THREE.MeshStandardMaterial({ roughness: 0.8, flatShading: true });
+
+  const halfCount = 200;
+  const pineTrunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, halfCount);
+  const pineLeavesMesh = new THREE.InstancedMesh(pineLeafGeo, pineLeafMat, halfCount);
+  const roundTrunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, halfCount);
+  const roundLeavesMesh = new THREE.InstancedMesh(roundLeafGeo, roundLeafMat, halfCount);
 
   const tDummy = new THREE.Object3D();
   const lDummy = new THREE.Object3D();
 
-  for (let i = 0; i < treeCount; i++) {
+  // Green color palettes for diversity
+  const pineColors = [
+    new THREE.Color(0x0f4026),
+    new THREE.Color(0x145332),
+    new THREE.Color(0x166534),
+    new THREE.Color(0x1b4d3e),
+    new THREE.Color(0x1a3a2a)
+  ];
+  const roundColors = [
+    new THREE.Color(0x15803d),
+    new THREE.Color(0x16a34a),
+    new THREE.Color(0x22c55e),
+    new THREE.Color(0x4ade80),
+    new THREE.Color(0x65a30d), // olive lime
+    new THREE.Color(0x84cc16), // lime
+    new THREE.Color(0xa3e635), // bright lime
+    new THREE.Color(0xeab308)  // autumn amber
+  ];
+
+  let pIdx = 0, rIdx = 0;
+
+  for (let i = 0; i < 400; i++) {
     const r = 11.5 + Math.random() * 140.0;
     const theta = Math.random() * Math.PI * 2;
     const x = Math.cos(theta) * r;
     const z = Math.sin(theta) * r;
     const y = groundHeight(x, z) - 0.5;
 
-    const scale = 0.75 + Math.random() * 0.95;
+    const scale = 0.7 + Math.random() * 0.9;
 
-    tDummy.position.set(x, y, z);
-    tDummy.scale.set(scale, scale, scale);
-    tDummy.rotation.set(0, Math.random() * Math.PI, 0);
-    tDummy.updateMatrix();
-    trunkMesh.setMatrixAt(i, tDummy.matrix);
+    // Alternate tree species
+    if (i % 2 === 0 && pIdx < halfCount) {
+      // Pine Tree
+      tDummy.position.set(x, y, z);
+      tDummy.scale.set(scale, scale, scale);
+      tDummy.rotation.set(0, Math.random() * Math.PI, 0);
+      tDummy.updateMatrix();
+      pineTrunkMesh.setMatrixAt(pIdx, tDummy.matrix);
 
-    lDummy.position.set(x, y + 1.8 * scale, z);
-    lDummy.scale.set(scale, scale, scale);
-    lDummy.rotation.set(0, Math.random() * Math.PI, 0);
-    lDummy.updateMatrix();
-    leavesMesh.setMatrixAt(i, lDummy.matrix);
+      lDummy.position.set(x, y + 1.8 * scale, z);
+      lDummy.scale.set(scale, scale, scale);
+      lDummy.rotation.set(0, Math.random() * Math.PI, 0);
+      lDummy.updateMatrix();
+      pineLeavesMesh.setMatrixAt(pIdx, lDummy.matrix);
+
+      const color = pineColors[Math.floor(Math.random() * pineColors.length)];
+      pineLeavesMesh.setColorAt(pIdx, color);
+
+      pIdx++;
+    } else if (rIdx < halfCount) {
+      // Round Tree
+      tDummy.position.set(x, y, z);
+      tDummy.scale.set(scale, scale, scale);
+      tDummy.rotation.set(0, Math.random() * Math.PI, 0);
+      tDummy.updateMatrix();
+      roundTrunkMesh.setMatrixAt(rIdx, tDummy.matrix);
+
+      lDummy.position.set(x, y + 1.8 * scale, z);
+      lDummy.scale.set(scale, scale, scale);
+      lDummy.rotation.set(0, Math.random() * Math.PI, 0);
+      lDummy.updateMatrix();
+      roundLeavesMesh.setMatrixAt(rIdx, lDummy.matrix);
+
+      const color = roundColors[Math.floor(Math.random() * roundColors.length)];
+      roundLeavesMesh.setColorAt(rIdx, color);
+
+      rIdx++;
+    }
   }
 
-  trunkMesh.instanceMatrix.needsUpdate = true;
-  trunkMesh.castShadow = true;
-  trunkMesh.receiveShadow = true;
-  w.group.add(trunkMesh);
+  pineTrunkMesh.instanceMatrix.needsUpdate = true;
+  pineTrunkMesh.castShadow = true; pineTrunkMesh.receiveShadow = true;
+  w.group.add(pineTrunkMesh);
 
-  leavesMesh.instanceMatrix.needsUpdate = true;
-  leavesMesh.castShadow = true;
-  leavesMesh.receiveShadow = true;
-  w.group.add(leavesMesh);
+  pineLeavesMesh.instanceMatrix.needsUpdate = true;
+  pineLeavesMesh.instanceColor.needsUpdate = true;
+  pineLeavesMesh.castShadow = true; pineLeavesMesh.receiveShadow = true;
+  w.group.add(pineLeavesMesh);
+
+  roundTrunkMesh.instanceMatrix.needsUpdate = true;
+  roundTrunkMesh.castShadow = true; roundTrunkMesh.receiveShadow = true;
+  w.group.add(roundTrunkMesh);
+
+  roundLeavesMesh.instanceMatrix.needsUpdate = true;
+  roundLeavesMesh.instanceColor.needsUpdate = true;
+  roundLeavesMesh.castShadow = true; roundLeavesMesh.receiveShadow = true;
+  w.group.add(roundLeavesMesh);
 
   // 4. Forest Animals
   // Hopping Rabbits
