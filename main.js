@@ -50,13 +50,12 @@ const PARTICLE_VERT = `
     vColor = aColor;
     vec3 pos = position;
 
-    // 1. Keplerian Orbit for Galaxy (Scene 0)
+    // 1. Orbit for Galaxy (Scene 0) - Constant speed to preserve spiral and prevent ring shearing
     if (uScene == 0.0) {
       float r = length(pos.xz);
       if (r > 0.1) {
         float initAngle = atan(pos.z, pos.x);
-        // Rotation curve: inner stars orbit faster than outer ones
-        float speed = 0.38 / (r + 0.6);
+        float speed = 0.065;
         // Wrap angle using modulo to prevent float precision quantization spokes
         float currentAngle = mod(initAngle + uTime * speed, 6.2831853);
         
