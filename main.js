@@ -181,64 +181,118 @@ function buildGalaxy() {
     0x030305, 0.004
   );
 
-  const COUNT = 20000, ARMS = 4, R = 24;
+  const COUNT = 120000;
+  const ARMS = 3;
+  const R = 25;
   const pos = new Float32Array(COUNT * 3);
   const col = new Float32Array(COUNT * 3);
   const siz = new Float32Array(COUNT);
-  const phi = Math.PI * (3 - Math.sqrt(5));
 
-  const cCore  = new THREE.Color(0xffe4a0);
-  const cMid   = new THREE.Color(0x9d8fff);
-  const cOuter = new THREE.Color(0x3a6fff);
-
-  const gauss = () => {
-    let u,v;
-    do { u = Math.random(); } while (!u);
-    do { v = Math.random(); } while (!v);
-    return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
-  };
+  const cCore   = new THREE.Color(0xfff3d6); // Ivory/Cream
+  const cInner  = new THREE.Color(0xff8c55); // Warm Coral
+  const cMid    = new THREE.Color(0xd946ef); // Neon Magenta
+  const cOuter  = new THREE.Color(0x3b82f6); // Royal Blue
+  const cEdge   = new THREE.Color(0x0f172a); // Deep Space Navy
 
   for (let i = 0; i < COUNT; i++) {
-    const isCore = i < COUNT * 0.07;
-    const arm   = i % ARMS;
-    const t     = Math.pow(Math.random(), isCore ? 0.25 : 0.9);
-    const r     = isCore ? Math.random() * 1.8 : t * R;
-    const spin  = r * 1.1 + (arm / ARMS) * Math.PI * 2;
-    const ox    = gauss() * (isCore ? 0.3 : r * 0.055 + 0.15);
-    const oy    = gauss() * (isCore ? 0.2 : 0.18);
-    const oz    = gauss() * (isCore ? 0.3 : r * 0.055 + 0.15);
+    // 15% of particles form a dense spherical core bulge
+    const isCore = i < COUNT * 0.15;
+    let x, y, z;
+    let radius;
 
-    pos[i*3]   = Math.cos(spin) * r + ox;
-    pos[i*3+1] = oy;
-    pos[i*3+2] = Math.sin(spin) * r + oz;
+    if (isCore) {
+      // Spherical distribution concentrated at center
+      radius = Math.pow(Math.random(), 2.5) * 3.5;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos((Math.random() * 2) - 1);
+      
+      x = Math.sin(phi) * Math.cos(theta) * radius;
+      y = Math.cos(phi) * radius * 0.7; // slightly flattened
+      z = Math.sin(phi) * Math.sin(theta) * radius;
+    } else {
+      // Spiral arms using logarithmic/spin distribution
+      radius = Math.pow(Math.random(), 1.0) * R;
+      const spinAngle = radius * 1.05;
+      const armIndex = i % ARMS;
+      const branchAngle = (armIndex / ARMS) * Math.PI * 2;
+      const angle = branchAngle + spinAngle;
 
-    const c = r < 2  ? cCore.clone().lerp(new THREE.Color(0xff9f60), Math.random())
-            : r < 12 ? cCore.clone().lerp(cMid, t)
-            :           cMid.clone().lerp(cOuter, (t-.5)*2);
-    const b = .45 + Math.random()*.55;
-    col[i*3]=c.r*b; col[i*3+1]=c.g*b; col[i*3+2]=c.b*b;
-    siz[i] = isCore ? 2.2 + Math.random()*1.6 : .4 + Math.random()*.9;
+      // Power-law scatter: concentrates particles tightly near the arm's spine
+      const power = 3.6;
+      const spreadX = Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.45 * (radius + 1.2);
+      const spreadY = Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.30 * (radius + 1.2);
+      const spreadZ = Math.pow(Math.random(), power) * (Math.random() < 0.5 ? 1 : -1) * 0.45 * (radius + 1.2);
+
+      x = Math.cos(angle) * radius + spreadX;
+      y = spreadY;
+      z = Math.sin(angle) * radius + spreadZ;
+    }
+
+    pos[i * 3]     = x;
+    pos[i * 3 + 1] = y;
+    pos[i * 3 + 2] = z;
+
+    // Color interpolation along radius
+    const t = isCore ? (radius / 3.5) * 0.2 : radius / R;
+    let color;
+
+    if (t < 0.15) {
+      color = cCore.clone().lerp(cInner, t / 0.15);
+    } else if (t < 0.45) {
+      color = cInner.clone().lerp(cMid, (t - 0.15) / 0.30);
+    } else if (t < 0.8) {
+      color = cMid.clone().lerp(cOuter, (t - 0.45) / 0.35);
+    } else {
+      color = cOuter.clone().lerp(cEdge, (t - 0.8) / 0.20);
+    }
+
+    // Add slight brightness variation + dust lanes (dimming)
+    const noise = Math.random();
+    let brightness = 0.4 + noise * 0.6;
+    
+    // Simulate dark dust lane gaps along arms
+    const theta = Math.atan2(z, x);
+    const distToArm = Math.sin(theta * ARMS - radius * 1.05);
+    if (!isCore && distToArm > 0.6 && distToArm < 0.85) {
+      brightness *= 0.18; // Very dark dust lane
+    }
+
+    col[i * 3]     = color.r * brightness;
+    col[i * 3 + 1] = color.g * brightness;
+    col[i * 3 + 2] = color.b * brightness;
+
+    // Sizes: mix of fine dust (95%) and bright glowing stars (5%)
+    const isBrightStar = Math.random() < 0.04;
+    siz[i] = isBrightStar 
+      ? 2.2 + Math.random() * 2.8 
+      : 0.45 + Math.random() * 0.8;
   }
 
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
-  geo.setAttribute('aColor',   new THREE.BufferAttribute(col,3));
-  geo.setAttribute('aSize',    new THREE.BufferAttribute(siz,1));
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aColor',   new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('aSize',    new THREE.BufferAttribute(siz, 1));
 
   const mat = new THREE.ShaderMaterial({
-    vertexShader: PARTICLE_VERT, fragmentShader: PARTICLE_FRAG,
-    uniforms: sharedUniforms,
-    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader:   PARTICLE_VERT,
+    fragmentShader: PARTICLE_FRAG,
+    uniforms:       sharedUniforms,
+    transparent:    true,
+    depthWrite:     false,
+    blending:       THREE.AdditiveBlending,
   });
 
   const pts = new THREE.Points(geo, mat);
   w.group.add(pts);
 
   // Background stars
-  addBackgroundStars(w.group, 5000, 60, 200);
+  addBackgroundStars(w.group, 6000, 50, 250);
 
   w.build = () => {};
-  w.tick = (t) => { pts.rotation.y = t * 0.015; pts.rotation.x = Math.sin(t*.06)*.04 + .1; };
+  w.tick = (t) => {
+    pts.rotation.y = t * 0.012;
+    pts.rotation.x = Math.sin(t * 0.05) * 0.03 + 0.08;
+  };
   worlds.push(w);
 }
 
