@@ -1251,9 +1251,9 @@ function buildEarth() {
 // WORLD 3 — CITY GRID (aerial view)
 // ─────────────────────────────────────────────────────────────
 const CROWD_VERT = `
-  attribute float aType;  // 0.0 for roads, 1.0 for buildings
-  attribute vec3  aDir;   // velocity vector
-  attribute float aPhase;
+  attribute vec3  aDir;    // Direction & speed
+  attribute float aPhase;  // Twinkle & sway phase
+  attribute float aLane;    // Side offset from centerline (lane)
   varying vec3    vColor;
   varying float   vAlpha;
   uniform float   uTime;
@@ -1262,28 +1262,41 @@ const CROWD_VERT = `
   void main() {
     vec3 pos = position;
 
-    if (aType == 0.0) {
-      // Flow along roads, wrapping city bounds (-20.0 to 20.0)
-      pos += aDir * uTime;
+    // Flocking flow animation
+    if (abs(aDir.x) > 0.0) {
+      // Flow along X
+      pos.x += aDir.x * uTime;
       pos.x = mod(pos.x + 20.0, 40.0) - 20.0;
+      
+      // Side lane offset
+      pos.z += aLane;
+      
+      // Pedestrian/crowd flocking sway (side to side)
+      pos.z += sin(uTime * 2.8 + aPhase) * 0.07;
+      // Crowd speed variations (weaving/overtaking)
+      pos.x += cos(uTime * 0.45 + aPhase) * 0.16;
+    } else {
+      // Flow along Z
+      pos.z += aDir.z * uTime;
       pos.z = mod(pos.z + 20.0, 40.0) - 20.0;
-    } else {
-      // Gentle breathing vibration inside buildings
-      pos.y += sin(uTime * 1.5 + aPhase) * 0.08;
+      
+      pos.x += aLane;
+      
+      pos.x += sin(uTime * 2.8 + aPhase) * 0.07;
+      pos.z += cos(uTime * 0.45 + aPhase) * 0.16;
     }
 
-    // Colors: cyan/yellow headlights on streets, warm orange/amber inside structures
-    if (aType == 0.0) {
-      vColor = (aDir.x + aDir.z > 0.0) ? vec3(0.2, 0.7, 1.0) : vec3(1.0, 0.85, 0.4);
+    // High-contrast headlight colors (Cyan vs Amber streams)
+    if (aDir.x + aDir.z > 0.0) {
+      vColor = vec3(0.2, 0.75, 1.0);
     } else {
-      vColor = vec3(1.0, 0.55, 0.2);
+      vColor = vec3(1.0, 0.52, 0.12);
     }
 
-    vAlpha = 0.5 + sin(uTime * 4.0 + aPhase) * 0.45;
+    vAlpha = 0.45 + sin(uTime * 3.8 + aPhase) * 0.38;
 
     vec4 mv = modelViewMatrix * vec4(pos, 1.0);
-    // Tiny pinpoint size
-    gl_PointSize = clamp(1.3 * uPR * (150.0 / -mv.z), 0.5, 4.0);
+    gl_PointSize = clamp(1.4 * uPR * (150.0 / -mv.z), 0.5, 4.0);
     gl_Position  = projectionMatrix * mv;
   }
 `;
@@ -1295,7 +1308,7 @@ const CROWD_FRAG = `
     float d = length(uv);
     if (d > 0.5) discard;
     float cutoff = smoothstep(0.5, 0.35, d);
-    gl_FragColor = vec4(vColor, cutoff * vAlpha * 0.88);
+    gl_FragColor = vec4(vColor, cutoff * vAlpha * 0.9);
   }
 `;
 
@@ -1310,7 +1323,7 @@ function buildCity() {
   const SPACING = 2.2;
   const bGeo = new THREE.BoxGeometry(1, 1, 1);
   const bMat = new THREE.MeshStandardMaterial({
-    color: 0x64748b, emissive: 0x1e293b, emissiveIntensity: 0.55,
+    color: 0x475569, emissive: 0x1e293b, emissiveIntensity: 0.55,
     roughness: 0.8, metalness: 0.3,
   });
   const iMesh = new THREE.InstancedMesh(bGeo, bMat, ROWS * COLS);
@@ -1350,9 +1363,9 @@ function buildCity() {
   if (iMesh.instanceColor) iMesh.instanceColor.needsUpdate = true;
   w.group.add(iMesh);
 
-  // Ground plane
+  // Ground plane (dark tarmac)
   const gGeo = new THREE.PlaneGeometry(60, 60, 1, 1);
-  const gMat = new THREE.MeshStandardMaterial({ color: 0x050510, roughness: 1 });
+  const gMat = new THREE.MeshStandardMaterial({ color: 0x07090e, roughness: 1.0 });
   const ground = new THREE.Mesh(gGeo, gMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -.5;
@@ -1374,15 +1387,15 @@ function buildCity() {
   }
   const lGeo = new THREE.BufferGeometry();
   lGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(linePts), 3));
-  const lMat = new THREE.LineBasicMaterial({ color: 0x2244bb, transparent:true, opacity:.35, blending:THREE.AdditiveBlending });
+  const lMat = new THREE.LineBasicMaterial({ color: 0x1e3a8a, transparent:true, opacity:.30, blending:THREE.AdditiveBlending });
   w.group.add(new THREE.LineSegments(lGeo, lMat));
 
 
-  // 200,000 NPC CROWDS (headlights flowing along roads, windows twinkling)
+  // 200,000 NPC STREET CROWDS (flocking along road grid)
   const NPC_COUNT = 200000;
   const npcPos   = new Float32Array(NPC_COUNT * 3);
   const npcDir   = new Float32Array(NPC_COUNT * 3);
-  const npcType  = new Float32Array(NPC_COUNT);
+  const npcLane  = new Float32Array(NPC_COUNT);
   const npcPhase = new Float32Array(NPC_COUNT);
 
   // Road coordinates cache
@@ -1392,61 +1405,40 @@ function buildCity() {
   for (let c = 0; c < COLS; c++) { if (c % 4 === 0) roadCols.push((c - COLS/2) * SPACING); }
 
   for (let i = 0; i < NPC_COUNT; i++) {
-    const isRoadNPC = Math.random() < 0.75;
-    
-    if (isRoadNPC) {
-      npcType[i] = 0.0;
-      npcPhase[i] = Math.random() * 100.0;
+    npcPhase[i] = Math.random() * 100.0;
+    // Lane offset (-0.35 to +0.35)
+    npcLane[i]  = (Math.random() - 0.5) * 0.7;
+
+    const isHorizontal = Math.random() < 0.5;
+    if (isHorizontal) {
+      const z = roadRows[Math.floor(Math.random() * roadRows.length)];
+      const x = (Math.random() - 0.5) * 40.0;
+      npcPos[i * 3]     = x;
+      npcPos[i * 3 + 1] = -0.42; // strictly street level
+      npcPos[i * 3 + 2] = z;
       
-      const isHorizontal = Math.random() < 0.5;
-      if (isHorizontal) {
-        const z = roadRows[Math.floor(Math.random() * roadRows.length)];
-        const x = (Math.random() - 0.5) * 40.0;
-        npcPos[i * 3]     = x;
-        npcPos[i * 3 + 1] = -0.42; // slightly above ground
-        npcPos[i * 3 + 2] = z;
-        
-        const speed = 0.8 + Math.random() * 1.5;
-        npcDir[i * 3]     = Math.random() < 0.5 ? speed : -speed;
-        npcDir[i * 3 + 1] = 0.0;
-        npcDir[i * 3 + 2] = 0.0;
-      } else {
-        const x = roadCols[Math.floor(Math.random() * roadCols.length)];
-        const z = (Math.random() - 0.5) * 40.0;
-        npcPos[i * 3]     = x;
-        npcPos[i * 3 + 1] = -0.42;
-        npcPos[i * 3 + 2] = z;
-        
-        const speed = 0.8 + Math.random() * 1.5;
-        npcDir[i * 3]     = 0.0;
-        npcDir[i * 3 + 1] = 0.0;
-        npcDir[i * 3 + 2] = Math.random() < 0.5 ? speed : -speed;
-      }
+      const speed = 0.6 + Math.random() * 1.2;
+      npcDir[i * 3]     = Math.random() < 0.5 ? speed : -speed;
+      npcDir[i * 3 + 1] = 0.0;
+      npcDir[i * 3 + 2] = 0.0;
     } else {
-      npcType[i] = 1.0;
-      npcPhase[i] = Math.random() * 10.0;
+      const x = roadCols[Math.floor(Math.random() * roadCols.length)];
+      const z = (Math.random() - 0.5) * 40.0;
+      npcPos[i * 3]     = x;
+      npcPos[i * 3 + 1] = -0.42;
+      npcPos[i * 3 + 2] = z;
       
-      const b = buildingData[Math.floor(Math.random() * buildingData.length)];
-      if (b) {
-        const wFactor = 0.8;
-        npcPos[i * 3]     = b.x + (Math.random() - 0.5) * wFactor;
-        npcPos[i * 3 + 1] = Math.random() * b.h - 0.5;
-        npcPos[i * 3 + 2] = b.z + (Math.random() - 0.5) * wFactor;
-      } else {
-        npcPos[i * 3]     = 0;
-        npcPos[i * 3 + 1] = 0;
-        npcPos[i * 3 + 2] = 0;
-      }
-      npcDir[i * 3]     = 0;
-      npcDir[i * 3 + 1] = 0;
-      npcDir[i * 3 + 2] = 0;
+      const speed = 0.6 + Math.random() * 1.2;
+      npcDir[i * 3]     = 0.0;
+      npcDir[i * 3 + 1] = 0.0;
+      npcDir[i * 3 + 2] = Math.random() < 0.5 ? speed : -speed;
     }
   }
 
   const npcGeo = new THREE.BufferGeometry();
   npcGeo.setAttribute('position', new THREE.BufferAttribute(npcPos, 3));
   npcGeo.setAttribute('aDir',     new THREE.BufferAttribute(npcDir, 3));
-  npcGeo.setAttribute('aType',    new THREE.BufferAttribute(npcType, 1));
+  npcGeo.setAttribute('aLane',    new THREE.BufferAttribute(npcLane, 1));
   npcGeo.setAttribute('aPhase',   new THREE.BufferAttribute(npcPhase, 1));
 
   const npcMat = new THREE.ShaderMaterial({
@@ -1455,6 +1447,7 @@ function buildCity() {
     uniforms:       { ...sharedUniforms, uScene: { value: 3.0 } },
     transparent:    true,
     depthWrite:     false,
+    depthTest:      true, // let buildings occlude NPCs behind them!
     blending:       THREE.AdditiveBlending,
   });
 
@@ -1462,9 +1455,9 @@ function buildCity() {
   w.group.add(npcSystem);
 
 
-  // Ambient + directional (brightened sky-lit values)
-  w.group.add(new THREE.AmbientLight(0xdbe5f0, 1.8));
-  const dl = new THREE.DirectionalLight(0xfff5e0, 2.5);
+  // Cyberpunk night-glow lighting (avoids overexposure/washed out streets)
+  w.group.add(new THREE.AmbientLight(0x0f172a, 0.85)); // dark slate-blue sky
+  const dl = new THREE.DirectionalLight(0x38bdf8, 1.25); // cool cyan moon-glow
   dl.position.set(10, 30, 10);
   w.group.add(dl);
 
