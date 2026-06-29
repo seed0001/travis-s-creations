@@ -784,8 +784,10 @@ function buildSolarSystem() {
   const corona2 = new THREE.Mesh(coronaGeo2, coronaMat2);
   w.group.add(corona2);
 
-  // Point light from sun
-  const sunLight = new THREE.PointLight(0xffcc77, 4, 300);
+  // Point light + Ambient light to brighten planets
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.48);
+  w.group.add(ambientLight);
+  const sunLight = new THREE.PointLight(0xffddaa, 6.5, 300);
   w.group.add(sunLight);
 
 
@@ -892,6 +894,53 @@ function buildSolarSystem() {
     }
   });
 
+  // ASTEROID BELT (Between Mars and Jupiter)
+  const ASTEROID_COUNT = 3000;
+  const astPos = new Float32Array(ASTEROID_COUNT * 3);
+  const astCol = new Float32Array(ASTEROID_COUNT * 3);
+  const astSiz = new Float32Array(ASTEROID_COUNT);
+  
+  const cAst1 = new THREE.Color(0x8a8279);
+  const cAst2 = new THREE.Color(0x5a5550);
+  
+  for (let i = 0; i < ASTEROID_COUNT; i++) {
+    // Distribute between Mars (13) and Jupiter (17.5)
+    const radius = 14.2 + Math.random() * 1.8;
+    const angle  = Math.random() * Math.PI * 2;
+    
+    const x = Math.cos(angle) * radius;
+    const y = (Math.random() - 0.5) * 0.35;
+    const z = Math.sin(angle) * radius;
+    
+    astPos[i * 3]     = x;
+    astPos[i * 3 + 1] = y;
+    astPos[i * 3 + 2] = z;
+    
+    const col = cAst1.clone().lerp(cAst2, Math.random());
+    astCol[i * 3]     = col.r;
+    astCol[i * 3 + 1] = col.g;
+    astCol[i * 3 + 2] = col.b;
+    
+    astSiz[i]         = 0.2 + Math.random() * 0.45;
+  }
+  
+  const astGeo = new THREE.BufferGeometry();
+  astGeo.setAttribute('position', new THREE.BufferAttribute(astPos, 3));
+  astGeo.setAttribute('aColor',   new THREE.BufferAttribute(astCol, 3));
+  astGeo.setAttribute('aSize',    new THREE.BufferAttribute(astSiz, 1));
+  
+  const astMat = new THREE.ShaderMaterial({
+    vertexShader:   PARTICLE_VERT,
+    fragmentShader: PARTICLE_FRAG,
+    uniforms:       { ...sharedUniforms, uScene: { value: 1.0 } },
+    transparent:    true,
+    depthWrite:     false,
+    blending:       THREE.AdditiveBlending,
+  });
+  
+  const asteroids = new THREE.Points(astGeo, astMat);
+  w.group.add(asteroids);
+
   // Background stars
   addBackgroundStars(w.group, 4000, 60, 300);
 
@@ -935,6 +984,9 @@ function buildSolarSystem() {
       pm.position.z = Math.sin(ud.angle) * ud.orbit;
       pm.rotation.y += 0.008;
     });
+
+    // Slow orbital rotation of asteroid belt
+    asteroids.rotation.y = t * 0.0012;
   };
 
   worlds.push(w);
