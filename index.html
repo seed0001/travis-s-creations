@@ -348,8 +348,11 @@
   <!-- GROUND MODE OVERLAY INSTRUCTIONS -->
   <div id="groundHUD" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(10,10,18,0.9);border:1px solid var(--green);border-radius:99px;padding:8px 24px;font-family:var(--mono);font-size:0.72rem;color:#fff;pointer-events:none;z-index:999;display:none;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.6), 0 0 10px rgba(74,222,128,0.2)">
     <span style="width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)"></span>
-    <span><strong>Ground View:</strong> WASD / Arrows to Walk &middot; Drag Mouse to Look &middot; Press <span style="background:rgba(255,255,255,0.15);padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.25)">ESC</span> to exit</span>
+    <span><strong>Ground View:</strong> WASD to Walk &middot; Move Mouse to Steer &middot; Click Critter to Inspect &middot; Press <span style="background:rgba(255,255,255,0.15);padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.25)">ESC</span> to exit</span>
   </div>
+
+  <!-- CROSSHAIR FOR GROUND VIEW -->
+  <div id="crosshair" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:6px;height:6px;border-radius:50%;background:rgba(74,222,128,0.85);box-shadow:0 0 6px rgba(74,222,128,0.85);pointer-events:none;z-index:9999;display:none;"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
   <script src="main.js"></script>

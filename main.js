@@ -184,6 +184,11 @@ function enterGroundMode() {
   if (isGroundMode) return;
   isGroundMode = true;
 
+  // Request pointer lock
+  const canvas = renderer.domElement;
+  canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
+  canvas.requestPointerLock();
+
   groundPlayer.x = camera.position.x * 0.4;
   groundPlayer.z = camera.position.z * 0.4;
   const r = Math.sqrt(groundPlayer.x * groundPlayer.x + groundPlayer.z * groundPlayer.z);
@@ -197,6 +202,8 @@ function enterGroundMode() {
 
   const groundHUD = document.getElementById('groundHUD');
   if (groundHUD) groundHUD.style.display = 'flex';
+  const crosshair = document.getElementById('crosshair');
+  if (crosshair) crosshair.style.display = 'block';
 
   scrollLocked = true;
 
@@ -222,8 +229,15 @@ function exitGroundMode() {
   if (!isGroundMode) return;
   isGroundMode = false;
 
+  // Exit pointer lock if active
+  if (document.pointerLockElement === renderer.domElement) {
+    document.exitPointerLock();
+  }
+
   const groundHUD = document.getElementById('groundHUD');
   if (groundHUD) groundHUD.style.display = 'none';
+  const crosshair = document.getElementById('crosshair');
+  if (crosshair) crosshair.style.display = 'none';
 
   scrollLocked = false;
 
@@ -246,6 +260,12 @@ function exitGroundMode() {
     }, 250);
   }
 }
+
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement !== renderer.domElement && isGroundMode) {
+    exitGroundMode();
+  }
+});
 
 function initThree() {
   const canvas = document.getElementById('c');
@@ -281,11 +301,22 @@ function initThree() {
 
   // Track Mouse movement for parallax & raycasting
   document.addEventListener('mousemove', e => {
-    mouseNDX = (e.clientX / window.innerWidth - 0.5) * 2;
-    mouseNDY = (e.clientY / window.innerHeight - 0.5) * 2;
+    if (isGroundMode && currentWorld === 3) {
+      // Steer camera yaw/pitch using pointer lock deltas
+      groundPlayer.yaw -= e.movementX * 0.0022;
+      groundPlayer.pitch = Math.max(-0.6, Math.min(0.6, groundPlayer.pitch - e.movementY * 0.0022));
 
-    mouse2D.x = mouseNDX;
-    mouse2D.y = -mouseNDY;
+      // Lock mouse coordinate to absolute center of crosshair for raycasting
+      mouseNDX = 0;
+      mouseNDY = 0;
+      mouse2D.set(0, 0);
+    } else {
+      mouseNDX = (e.clientX / window.innerWidth - 0.5) * 2;
+      mouseNDY = (e.clientY / window.innerHeight - 0.5) * 2;
+      mouse2D.x = mouseNDX;
+      mouse2D.y = -mouseNDY;
+    }
+
     raycaster.setFromCamera(mouse2D, camera);
     raycaster.ray.intersectPlane(planeXZ, mouse3D);
     mouseActive = 1.0;
@@ -305,6 +336,7 @@ function initThree() {
   });
 
   window.addEventListener('mousemove', e => {
+    if (isGroundMode) return; // Pointer lock handles steering
     if (!isDragging) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
@@ -313,13 +345,8 @@ function initThree() {
       dragMoved = true;
     }
 
-    if (isGroundMode && currentWorld === 3) {
-      groundPlayer.yaw -= dx * 0.0035;
-      groundPlayer.pitch = Math.max(-0.6, Math.min(0.6, groundPlayer.pitch - dy * 0.0035));
-    } else {
-      dragTheta -= dx * 0.005;
-      dragPhi   = Math.max(-1.3, Math.min(1.3, dragPhi + dy * 0.005));
-    }
+    dragTheta -= dx * 0.005;
+    dragPhi   = Math.max(-1.3, Math.min(1.3, dragPhi + dy * 0.005));
 
     startX = e.clientX;
     startY = e.clientY;
@@ -347,8 +374,13 @@ function initThree() {
 
   window.addEventListener('mousemove', e => {
     if (tooltip.style.display === 'block') {
-      tooltip.style.left = (e.clientX + 15) + 'px';
-      tooltip.style.top = (e.clientY + 15) + 'px';
+      if (isGroundMode && currentWorld === 3) {
+        tooltip.style.left = (window.innerWidth / 2 + 18) + 'px';
+        tooltip.style.top = (window.innerHeight / 2 + 18) + 'px';
+      } else {
+        tooltip.style.left = (e.clientX + 15) + 'px';
+        tooltip.style.top = (e.clientY + 15) + 'px';
+      }
     }
   });
 
