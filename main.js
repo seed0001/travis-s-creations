@@ -527,27 +527,134 @@ const SUN_FRAG = `
     float n2 = fbm(uv - vec2(uTime * 0.10, -uTime * 0.15));
     float finalNoise = (n1 + n2) * 0.5;
 
-    vec3 cRed    = vec3(0.55, 0.02, 0.0);
-    vec3 cOrange = vec3(1.0, 0.38, 0.0);
-    vec3 cYellow = vec3(1.0, 0.82, 0.0);
-    vec3 cWhite  = vec3(1.0, 1.0, 0.95);
+    // High-contrast sunspots and peaks matching reference image
+    vec3 cDark   = vec3(0.06, 0.01, 0.0);   // Dark sunspot cavities
+    vec3 cRed    = vec3(0.58, 0.02, 0.0);   // Boiling magma red
+    vec3 cOrange = vec3(1.0, 0.35, 0.0);    // Orange solar fire
+    vec3 cYellow = vec3(1.0, 0.80, 0.0);    // Hot plasma yellow
+    vec3 cWhite  = vec3(1.0, 1.0, 0.90);    // White-hot peaks
 
     vec3 color;
-    if (finalNoise < 0.35) {
-      color = mix(cRed, cOrange, finalNoise / 0.35);
-    } else if (finalNoise < 0.65) {
-      color = mix(cOrange, cYellow, (finalNoise - 0.35) / 0.30);
+    if (finalNoise < 0.22) {
+      color = mix(cDark, cRed, finalNoise / 0.22);
+    } else if (finalNoise < 0.48) {
+      color = mix(cRed, cOrange, (finalNoise - 0.22) / 0.26);
+    } else if (finalNoise < 0.75) {
+      color = mix(cOrange, cYellow, (finalNoise - 0.48) / 0.27);
     } else {
-      color = mix(cYellow, cWhite, (finalNoise - 0.65) / 0.35);
+      color = mix(cYellow, cWhite, (finalNoise - 0.75) / 0.25);
     }
 
-    // Edge fresnel fire glow
+    // Edge fresnel glow
     vec3 view = normalize(vec3(0, 0, 1));
     float rim = 1.0 - abs(dot(vNormal, view));
     rim = pow(rim, 3.0);
     color += cOrange * rim * 1.1;
 
     gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
+const CORONA_VERT = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  uniform float uTime;
+
+  float hash(vec3 p) {
+    p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+    p += dot(p.xyz, p.yzx + 19.19);
+    return fract(p.x * p.y * p.z);
+  }
+  float noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), u.x),
+          mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), u.x), u.y),
+      mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), u.x),
+          mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), u.x), u.y),
+      u.z
+    );
+  }
+  float fbm(vec3 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int k = 0; k < 3; k++) {
+      v += a * noise(p);
+      p *= 2.0;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    vPosition = position;
+
+    // Displace vertices along normal to physically model solar flares shooting out
+    float disp = fbm(position * 1.0 + vec3(0.0, 0.0, uTime * 0.85)) * 0.68;
+    vec3 newPos = position + normal * disp;
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
+  }
+`;
+
+const CORONA_FRAG = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  uniform float uTime;
+
+  float hash(vec3 p) {
+    p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+    p += dot(p.xyz, p.yzx + 19.19);
+    return fract(p.x * p.y * p.z);
+  }
+  float noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), u.x),
+          mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), u.x), u.y),
+      mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), u.x),
+          mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), u.x), u.y),
+      u.z
+    );
+  }
+  float fbm(vec3 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int k = 0; k < 3; k++) {
+      v += a * noise(p);
+      p *= 2.0;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main() {
+    // Generate soft, licking fire shapes
+    float n = fbm(vPosition * 2.0 + vec3(0.0, 0.0, -uTime * 0.65));
+
+    // Fresnel fade so it's transparent in the middle, glowing at the silhouette
+    vec3 view = normalize(vec3(0, 0, 1));
+    float rim = 1.0 - abs(dot(vNormal, view));
+    rim = pow(rim, 2.0);
+
+    float alpha = n * rim * 2.4;
+    alpha = smoothstep(0.18, 0.62, alpha);
+
+    vec3 cOrange = vec3(1.0, 0.30, 0.0);
+    vec3 cYellow = vec3(1.0, 0.85, 0.0);
+    vec3 color = mix(cOrange, cYellow, n);
+
+    if (alpha < 0.01) discard;
+
+    gl_FragColor = vec4(color, alpha * 0.68);
   }
 `;
 
@@ -639,6 +746,33 @@ function buildSolarSystem() {
   });
   const sun = new THREE.Mesh(sunGeo, sunMat);
   w.group.add(sun);
+
+  // Nested Corona Flame Shells (physically deforming noise shells)
+  const coronaGeo1 = new THREE.SphereGeometry(2.44, 64, 64);
+  const coronaMat1 = new THREE.ShaderMaterial({
+    vertexShader:   CORONA_VERT,
+    fragmentShader: CORONA_FRAG,
+    uniforms:       { uTime: sharedUniforms.uTime },
+    transparent:    true,
+    depthWrite:     false,
+    blending:       THREE.AdditiveBlending,
+    side:           THREE.DoubleSide,
+  });
+  const corona1 = new THREE.Mesh(coronaGeo1, coronaMat1);
+  w.group.add(corona1);
+
+  const coronaGeo2 = new THREE.SphereGeometry(2.55, 64, 64);
+  const coronaMat2 = new THREE.ShaderMaterial({
+    vertexShader:   CORONA_VERT,
+    fragmentShader: CORONA_FRAG,
+    uniforms:       { uTime: sharedUniforms.uTime },
+    transparent:    true,
+    depthWrite:     false,
+    blending:       THREE.AdditiveBlending,
+    side:           THREE.DoubleSide,
+  });
+  const corona2 = new THREE.Mesh(coronaGeo2, coronaMat2);
+  w.group.add(corona2);
 
   // Sun glow shells (atmospheric bleed)
   [4, 6.2, 9].forEach((r, i) => {
