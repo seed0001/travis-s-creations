@@ -91,7 +91,7 @@ const PARTICLE_FRAG = `
     float d = length(uv);
     // Smoothly fade alpha to exactly 0.0 at d=0.5 to eliminate square quad border grids
     float cutoff = smoothstep(0.5, 0.42, d);
-    float a = exp(-d * 6.8) * cutoff * vAlpha;
+    float a = exp(-d * 9.0) * cutoff * vAlpha;
     if (a < 0.005) discard;
     gl_FragColor = vec4(vColor, a);
   }
@@ -298,7 +298,7 @@ function createCoreGlowTexture() {
 
 function buildGalaxy() {
   const w = new World('Galaxy',
-    { x:0,  y:6,  z:32 }, { x:0, y:0, z:0 },
+    { x:0,  y:12,  z:48 }, { x:0, y:0, z:0 },
     0x030305, 0.004
   );
 
@@ -366,7 +366,7 @@ function buildGalaxy() {
     starCol[i * 3 + 1] = color.g * brightness;
     starCol[i * 3 + 2] = color.b * brightness;
 
-    starSiz[i] = Math.random() < 0.03 ? 2.5 + Math.random() * 2.5 : 0.4 + Math.random() * 0.7;
+    starSiz[i] = Math.random() < 0.03 ? 1.4 + Math.random() * 1.6 : 0.22 + Math.random() * 0.40;
   }
 
   const starGeo = new THREE.BufferGeometry();
@@ -424,15 +424,15 @@ function buildGalaxy() {
     else color = cGasMid.clone().lerp(cGasOuter, (t - 0.3) / 0.7);
 
     // Dynamic gas density falloff
-    let density = (1.0 - t) * 0.045; // Extremely faint per-particle so they merge smoothly
+    let density = (1.0 - t) * 0.016; // Extremely faint per-particle so they merge smoothly
     if (Math.random() < 0.1) density *= 0.5; // add patchiness
 
     gasCol[i * 3]     = color.r * density;
     gasCol[i * 3 + 1] = color.g * density;
     gasCol[i * 3 + 2] = color.b * density;
 
-    // Gas particles are physically massive
-    gasSiz[i] = 12.0 + Math.random() * 16.0;
+    // Gas particles are physically massive but scaled down to sharpen arms
+    gasSiz[i] = 3.5 + Math.random() * 4.5;
   }
 
   const gasGeo = new THREE.BufferGeometry();
