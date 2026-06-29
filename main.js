@@ -122,6 +122,8 @@ let mouseActive = 0.0;
 function initThree() {
   const canvas = document.getElementById('c');
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(0x030305, 1);
@@ -1325,9 +1327,9 @@ function buildCity() {
   
   // Base PBR material modified with custom GLSL for window grids
   const bMat = new THREE.MeshStandardMaterial({
-    color: 0x111622,
-    roughness: 0.8,
-    metalness: 0.2
+    color: 0x8fa2b8,
+    roughness: 0.72,
+    metalness: 0.22
   });
 
   bMat.onBeforeCompile = (shader) => {
@@ -1427,6 +1429,8 @@ function buildCity() {
     }
   }
   iMesh.instanceMatrix.needsUpdate = true;
+  iMesh.castShadow = true;
+  iMesh.receiveShadow = true;
   w.group.add(iMesh);
 
 
@@ -1482,12 +1486,13 @@ function buildCity() {
   }
 
 
-  // Ground plane (dark tarmac)
+  // Ground plane (dark tarmac, receives shadows)
   const gGeo = new THREE.PlaneGeometry(60, 60, 1, 1);
-  const gMat = new THREE.MeshStandardMaterial({ color: 0x07090e, roughness: 1.0 });
+  const gMat = new THREE.MeshStandardMaterial({ color: 0x222b3d, roughness: 0.85 });
   const ground = new THREE.Mesh(gGeo, gMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -.5;
+  ground.receiveShadow = true;
   w.group.add(ground);
 
   // Road grid lines
@@ -1573,10 +1578,21 @@ function buildCity() {
   w.group.add(npcSystem);
 
 
-  // Cyberpunk night-glow lighting (balanced, high-contrast)
-  w.group.add(new THREE.AmbientLight(0x0f172a, 0.85));
-  const dl = new THREE.DirectionalLight(0x38bdf8, 1.25);
-  dl.position.set(10, 30, 10);
+  // High-contrast metropolitan twilight lighting casting soft shadows
+  w.group.add(new THREE.AmbientLight(0x2d3b50, 1.4));
+  const dl = new THREE.DirectionalLight(0xfff0dd, 2.5);
+  dl.position.set(22, 38, 18);
+  dl.castShadow = true;
+  dl.shadow.mapSize.width = 1024;
+  dl.shadow.mapSize.height = 1024;
+  dl.shadow.camera.near = 0.5;
+  dl.shadow.camera.far = 120;
+  const d = 32;
+  dl.shadow.camera.left = -d;
+  dl.shadow.camera.right = d;
+  dl.shadow.camera.top = d;
+  dl.shadow.camera.bottom = -d;
+  dl.shadow.bias = -0.0006;
   w.group.add(dl);
 
   w.tick = (t) => {
