@@ -606,20 +606,18 @@ a, button { cursor: crosshair; }
 .ai-desc { font-size: .78rem; color: var(--mut); line-height: 1.55; }
 
 /* ── CONTACT PANEL ───────────────────────────────────────────── */
-#p5 { justify-content: center; align-items: center; }
-.contact-panel {
-  position: relative;
-  background: rgba(4, 4, 10, 0.93);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 4px;
-  padding: 40px 48px;
-  max-width: 560px; width: 100%;
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-  background-image: 
-    linear-gradient(rgba(255,255,255,0.007) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.007) 1px, transparent 1px);
-  background-size: 24px 24px;
+#p5 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.contact-link {
+  transition: all .2s var(--ease);
+}
+.contact-link:hover {
+  filter: brightness(1.25);
+  transform: translateX(4px);
 }
 .gh-card {
   display: flex; align-items: center; gap: 16px;
@@ -738,6 +736,16 @@ a, button { cursor: crosshair; }
 
   /* Earth HUD responsive */
   #p2 {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    overflow-y: auto;
+    gap: 20px;
+    padding-top: 80px;
+  }
+
+  /* Contact HUD responsive */
+  #p5 {
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
