@@ -119,6 +119,10 @@ const planeXZ   = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // Flat plane 
 const mouse3D   = new THREE.Vector3();
 let mouseActive = 0.0;
 
+let repoTowers = [];
+let hoveredTower = null;
+let dragMoved = false;
+
 function initThree() {
   const canvas = document.getElementById('c');
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -171,6 +175,7 @@ function initThree() {
   window.addEventListener('mousedown', e => {
     if (e.target.closest('#ui') || e.target.closest('#modal')) return;
     isDragging = true;
+    dragMoved = false;
     startX = e.clientX;
     startY = e.clientY;
   });
@@ -179,6 +184,10 @@ function initThree() {
     if (!isDragging) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
+
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      dragMoved = true;
+    }
 
     dragTheta -= dx * 0.005;
     dragPhi   = Math.max(-1.3, Math.min(1.3, dragPhi + dy * 0.005));
@@ -189,6 +198,44 @@ function initThree() {
 
   window.addEventListener('mouseup',    () => isDragging = false);
   window.addEventListener('mouseleave', () => isDragging = false);
+
+  // Initialize Dynamic 3D Tooltip Element
+  const tooltip = document.createElement('div');
+  tooltip.id = 'tooltip3d';
+  tooltip.style.position = 'fixed';
+  tooltip.style.pointerEvents = 'none';
+  tooltip.style.background = 'rgba(10, 10, 20, 0.95)';
+  tooltip.style.border = '1px solid var(--acc)';
+  tooltip.style.borderRadius = '6px';
+  tooltip.style.padding = '10px 14px';
+  tooltip.style.fontFamily = 'var(--mono)';
+  tooltip.style.fontSize = '0.72rem';
+  tooltip.style.color = '#fff';
+  tooltip.style.display = 'none';
+  tooltip.style.zIndex = '99999';
+  tooltip.style.boxShadow = '0 12px 40px rgba(0,0,0,0.85), 0 0 15px rgba(124,111,255,0.25)';
+  document.body.appendChild(tooltip);
+
+  window.addEventListener('mousemove', e => {
+    if (tooltip.style.display === 'block') {
+      tooltip.style.left = (e.clientX + 15) + 'px';
+      tooltip.style.top = (e.clientY + 15) + 'px';
+    }
+  });
+
+  window.addEventListener('click', e => {
+    if (e.target.closest('#ui') || e.target.closest('#modal')) return;
+    if (dragMoved) return;
+    if (currentWorld !== 3) return;
+
+    raycaster.setFromCamera(mouse2D, camera);
+    const intersects = raycaster.intersectObjects(repoTowers);
+    if (intersects.length > 0) {
+      const hit = intersects[0].object;
+      const repo = hit.userData.repo;
+      openModal(repo);
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -262,8 +309,14 @@ async function showWorld(idx) {
   // Update panels
   document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i === idx));
 
+  // Toggle 3D floating labels visibility
+  const labelsEl = document.getElementById('labels-container-3d');
+  if (labelsEl) {
+    labelsEl.style.display = idx === 3 ? 'block' : 'none';
+  }
+
   // Trigger per-section behaviors
-  if (idx === 1) triggerCounters();
+  if (idx === 1) { triggerCounters(); initSolarHUD(); }
   if (idx === 2) triggerSkillBars();
   if (idx === 3) triggerProjects();
 
@@ -1383,55 +1436,116 @@ function buildCity() {
     );
   };
 
-  const iMesh = new THREE.InstancedMesh(bGeo, bMat, ROWS * COLS);
-  const dummy = new THREE.Object3D();
+  const repoList = (repos && repos.length) ? repos : FALLBACK;
+  repoTowers = [];
 
-  const buildingData = [];
+  const repoCoords = [
+    { r: 5, c: 5 }, { r: 5, c: 9 }, { r: 5, c: 13 },
+    { r: 9, c: 5 }, { r: 9, c: 9 }, { r: 9, c: 13 },
+    { r: 13, c: 5 }, { r: 13, c: 9 }, { r: 13, c: 13 }
+  ];
+
   const beaconPos = [];
   const beaconCol = [];
   const beaconPhase = [];
 
-  let idx = 0;
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
-      const isRoad = (row % 4 === 0) || (col % 4 === 0);
-      if (isRoad) { dummy.scale.set(0,.001,0); dummy.updateMatrix(); iMesh.setMatrixAt(idx++, dummy.matrix); continue; }
+  // Remove existing floating labels container if it exists
+  const existingLabels = document.getElementById('labels-container-3d');
+  if (existingLabels) existingLabels.remove();
 
-      const h = 0.5 + Math.pow(Math.random(), 2) * 8;
-      const x = (col - COLS/2) * SPACING;
-      const z = (row - ROWS/2) * SPACING;
+  // Create a container for persistent 3D floating labels
+  const labelsContainer = document.createElement('div');
+  labelsContainer.id = 'labels-container-3d';
+  labelsContainer.style.position = 'fixed';
+  labelsContainer.style.inset = '0';
+  labelsContainer.style.pointerEvents = 'none';
+  labelsContainer.style.zIndex = '5';
+  labelsContainer.style.display = 'none'; // start hidden, toggled by showWorld
+  document.body.appendChild(labelsContainer);
 
-      dummy.position.set(x, h/2 - 0.5, z);
-      dummy.scale.set(.95, h, .95);
-      dummy.updateMatrix();
-      iMesh.setMatrixAt(idx, dummy.matrix);
+  repoList.slice(0, 9).forEach((repo, repoIndex) => {
+    const coord = repoCoords[repoIndex];
+    const x = (coord.c - COLS/2) * SPACING;
+    const z = (coord.r - ROWS/2) * SPACING;
+    
+    // Height of the repository tower based on size
+    const h = 5.5 + Math.min((repo.size || 0) / 100, 4);
 
-      buildingData.push({ idx, x, z, h });
-      
-      // Add blinking warning beacons on top of tall buildings
-      if (h > 3.2) {
-        // Position at building center top
-        beaconPos.push(x, h - 0.5 + 0.08, z);
-        
-        // Randomize beacon colors (Red, Cyan, Green)
-        const rand = Math.random();
-        if (rand < 0.5) {
-          beaconCol.push(1.0, 0.1, 0.15); // Red warning light
-        } else if (rand < 0.8) {
-          beaconCol.push(0.0, 0.95, 1.0); // Cyan light
-        } else {
-          beaconCol.push(0.1, 1.0, 0.25); // Green light
+    const towerGeo = new THREE.BoxGeometry(1.2, h, 1.2);
+    const langColorHex = lc(repo.language);
+    const colorObj = new THREE.Color(langColorHex);
+
+    const towerMat = bMat.clone();
+    towerMat.color.copy(colorObj).multiplyScalar(0.7);
+
+    towerMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = sharedUniforms.uTime;
+      shader.fragmentShader = `
+        uniform float uTime;
+        float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+      ` + shader.fragmentShader;
+
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <emissivemap_fragment>',
+        `
+        #include <emissivemap_fragment>
+        vec3 fNormal = normalize(vNormal);
+        float isVertical = step(0.1, length(fNormal.xz));
+        if (isVertical > 0.5) {
+          vec2 grid = vec2(6.0, 18.0);
+          vec2 winUv = fract(vUv * grid);
+          vec2 cellId = floor(vUv * grid);
+          float winMask = step(0.15, winUv.x) * step(0.15, 1.0 - winUv.x) *
+                          step(0.12, winUv.y) * step(0.12, 1.0 - winUv.y);
+          float rand = hash2(cellId + vViewPosition.xy * 0.1);
+          if (rand > 0.40 && winMask > 0.5) {
+            vec3 wCol = vec3(${colorObj.r}, ${colorObj.g}, ${colorObj.b});
+            float twinkle = 0.75 + sin(uTime * 1.5 + rand * 10.0) * 0.25;
+            totalEmissiveRadiance += wCol * 4.5 * twinkle;
+          }
         }
-        
-        beaconPhase.push(Math.random() * 15.0);
-      }
-      idx++;
-    }
-  }
-  iMesh.instanceMatrix.needsUpdate = true;
-  iMesh.castShadow = true;
-  iMesh.receiveShadow = true;
-  w.group.add(iMesh);
+        `
+      );
+    };
+
+    const towerMesh = new THREE.Mesh(towerGeo, towerMat);
+    towerMesh.position.set(x, h/2 - 0.5, z);
+    towerMesh.castShadow = true;
+    towerMesh.receiveShadow = true;
+
+    // Create persistent HTML label
+    const label = document.createElement('div');
+    label.className = 'floating-label';
+    label.dataset.index = repoIndex;
+    label.innerHTML = `<span class="fl-dot" style="background:${langColorHex};box-shadow:0 0 4px ${langColorHex}"></span>${repo.name}`;
+    
+    // Clicking on the label opens the repository modal
+    label.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openModal(repo);
+    });
+
+    labelsContainer.appendChild(label);
+
+    towerMesh.userData = {
+      isRepoTower: true,
+      repo: repo,
+      x: x,
+      z: z,
+      h: h,
+      labelEl: label,
+      baseColor: colorObj.clone(),
+      emissiveIntensity: 4.5
+    };
+
+    w.group.add(towerMesh);
+    repoTowers.push(towerMesh);
+
+    // Blinking warning beacon on top
+    beaconPos.push(x, h - 0.5 + 0.12, z);
+    beaconCol.push(colorObj.r, colorObj.g, colorObj.b);
+    beaconPhase.push(Math.random() * 15.0);
+  });
 
 
   // 2. Rooftop Warning Beacons Points System
@@ -1962,6 +2076,92 @@ function animate() {
 
     // 3. Tick active world animations
     w.tick(t);
+
+    // 4. Raycast for interactive 3D Repository Towers in City Grid
+    if (currentWorld === 3 && repoTowers.length > 0) {
+      raycaster.setFromCamera(mouse2D, camera);
+      const intersects = raycaster.intersectObjects(repoTowers);
+      if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        if (hoveredTower !== hit) {
+          if (hoveredTower) {
+            hoveredTower.scale.set(1.0, 1.0, 1.0);
+            if (hoveredTower.userData.labelEl) {
+              hoveredTower.userData.labelEl.classList.remove('active');
+            }
+          }
+          hoveredTower = hit;
+          hoveredTower.scale.set(1.06, 1.06, 1.06);
+          document.body.style.cursor = 'pointer';
+          if (hoveredTower.userData.labelEl) {
+            hoveredTower.userData.labelEl.classList.add('active');
+          }
+
+          const repo = hoveredTower.userData.repo;
+          const color = lc(repo.language);
+          const tooltipEl = document.getElementById('tooltip3d');
+          if (tooltipEl) {
+            tooltipEl.innerHTML = `
+              <div style="font-weight: 700; color: #fff; font-size: 0.8rem; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">${repo.name}</div>
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.65rem; color: #a1a1aa;">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: ${color}; box-shadow: 0 0 6px ${color}"></span>
+                ${repo.language || '—'}
+                <span>·</span>
+                <span>${repo.stargazers_count} ★</span>
+              </div>
+              <div style="color: #d4d4d8; line-height: 1.4; max-width: 220px; font-size: 0.68rem; margin-bottom: 6px;">${repo.description || 'No description.'}</div>
+              <div style="color: var(--acc); font-size: 0.62rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Click to open details ↗</div>
+            `;
+            tooltipEl.style.display = 'block';
+          }
+        }
+      } else {
+        if (hoveredTower) {
+          hoveredTower.scale.set(1.0, 1.0, 1.0);
+          if (hoveredTower.userData.labelEl) {
+            hoveredTower.userData.labelEl.classList.remove('active');
+          }
+          hoveredTower = null;
+          document.body.style.cursor = 'crosshair';
+          const tooltipEl = document.getElementById('tooltip3d');
+          if (tooltipEl) tooltipEl.style.display = 'none';
+        }
+      }
+
+      // Update 3D projected floating labels positioning
+      const tempV = new THREE.Vector3();
+      repoTowers.forEach(tower => {
+        const label = tower.userData.labelEl;
+        if (!label) return;
+        
+        tempV.set(tower.position.x, tower.userData.h - 0.5, tower.position.z);
+        tempV.project(camera);
+
+        if (tempV.z > 1.0) {
+          label.style.display = 'none';
+        } else {
+          const screenX = (tempV.x * 0.5 + 0.5) * window.innerWidth;
+          const screenY = (tempV.y * -0.5 + 0.5) * window.innerHeight;
+          
+          label.style.display = 'block';
+          label.style.left = `${screenX}px`;
+          label.style.top = `${screenY - 14}px`;
+        }
+      });
+    } else {
+      const tooltipEl = document.getElementById('tooltip3d');
+      if (tooltipEl && tooltipEl.style.display === 'block') {
+        tooltipEl.style.display = 'none';
+        if (hoveredTower) {
+          hoveredTower.scale.set(1.0, 1.0, 1.0);
+          if (hoveredTower.userData.labelEl) {
+            hoveredTower.userData.labelEl.classList.remove('active');
+          }
+          hoveredTower = null;
+        }
+        document.body.style.cursor = 'crosshair';
+      }
+    }
   }
 
   renderer.render(scene, camera);
@@ -2091,6 +2291,20 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 // SECTION BEHAVIORS
 // ─────────────────────────────────────────────────────────────
 let countersDone = false, skillsDone = false;
+
+// ─────────────────────────────────────────────────────────────
+// SOLAR HUD — Stack bar animator
+// ─────────────────────────────────────────────────────────────
+let solHUDInited = false;
+
+function initSolarHUD() {
+  if (solHUDInited) return;
+  solHUDInited = true;
+  // Animate the core stack bars in (similar to skill bars on scene 2)
+  setTimeout(() => {
+    document.querySelectorAll('.sol-stack-fill').forEach(f => f.classList.add('on'));
+  }, 300);
+}
 
 function triggerCounters() {
   if (countersDone) return; countersDone = true;
