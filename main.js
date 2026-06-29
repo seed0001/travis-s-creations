@@ -331,8 +331,8 @@ function buildGalaxy() {
       angle = branchAngle + spinAngle;
     }
 
-    const power = 3.6;
-    const spreadRadius = isCore ? 0.0 : Math.pow(Math.random(), power) * 0.40 * (radius + 1.2);
+    const power = 2.2; // Widen arms and increase randomization (less line-like)
+    const spreadRadius = isCore ? 0.0 : Math.pow(Math.random(), power) * 0.45 * (radius + 1.2);
     const spreadAngle  = Math.random() * Math.PI * 2;
 
     const x = Math.cos(angle) * radius + (isCore ? (Math.random() - 0.5) * radius : Math.cos(spreadAngle) * spreadRadius);
@@ -354,11 +354,13 @@ function buildGalaxy() {
     const noise = Math.random();
     let brightness = 0.5 + noise * 0.5;
 
-    // Dust lane simulation (dimming)
+    // Spiral dust lane simulation (corrected phase to prevent concentric rings)
     if (!isCore) {
       const theta = Math.atan2(z, x);
-      const distToArm = Math.sin(theta * ARMS - radius * 1.05);
-      if (distToArm > 0.65 && distToArm < 0.85) brightness *= 0.15;
+      const spiralPhase = Math.sin((theta - radius * 1.05) * ARMS);
+      if (spiralPhase > 0.45 && spiralPhase < 0.75) {
+        brightness *= 0.15;
+      }
     }
 
     starCol[i * 3]     = color.r * brightness;
