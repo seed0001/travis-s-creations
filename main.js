@@ -22,14 +22,6 @@ const LANG_COLOR = {
 };
 const lc = l => LANG_COLOR[l] || LANG_COLOR.default;
 
-const SCALE_LABELS = [
-  { num: '~100,000',  unit: 'light years' },
-  { num: '~8',        unit: 'light minutes' },
-  { num: '~400',      unit: 'km altitude' },
-  { num: '~50',       unit: 'cm scale' },
-  { num: '~0.01',     unit: 'mm scale' },
-  { num: '~0.1',      unit: 'nanometers' },
-];
 
 // ─────────────────────────────────────────────────────────────
 // SHARED SHADERS
@@ -442,10 +434,6 @@ async function showWorld(idx) {
     scene.fog = null;
   }
 
-  // Update scale label
-  const sl = SCALE_LABELS[idx];
-  document.getElementById('slNum').textContent  = sl.num;
-  document.getElementById('slUnit').textContent = sl.unit;
 
   // Update nav
   document.querySelectorAll('.ns').forEach((b,i) => b.classList.toggle('active', i === idx));
@@ -1185,8 +1173,8 @@ function buildSolarSystem() {
       pm.rotation.y += 0.008;
     });
 
-    // Slow orbital rotation of asteroid belt
-    asteroids.rotation.y = t * 0.0012;
+    // Slow orbital rotation of asteroid belt (visibly dynamic)
+    asteroids.rotation.y = t * 0.045;
   };
 
   worlds.push(w);

@@ -109,21 +109,7 @@ a, button { cursor: crosshair; }
 }
 .nav-gh:hover { color: var(--fg); border-color: var(--bdrh); background: rgba(255,255,255,.07); }
 
-/* ── SCALE LABEL ─────────────────────────────────────────────── */
-#scale-label {
-  position: absolute; bottom: 36px; left: 40px;
-  pointer-events: none;
-}
-.sl-num {
-  font-family: var(--mono); font-size: 1.5rem; font-weight: 700;
-  color: rgba(255,255,255,.15); line-height: 1;
-  transition: all .6s var(--ease);
-}
-.sl-unit {
-  font-family: var(--mono); font-size: .65rem;
-  color: rgba(255,255,255,.1); letter-spacing: .12em; text-transform: uppercase;
-  transition: all .6s var(--ease);
-}
+
 
 /* ── PANELS ──────────────────────────────────────────────────── */
 .panel {
