@@ -521,31 +521,41 @@ const SUN_FRAG = `
   }
 
   void main() {
-    // Boiling convection swirls
-    vec2 uv = vUv * 6.0;
-    float n1 = fbm(uv + vec2(uTime * 0.16, uTime * 0.12));
-    float n2 = fbm(uv - vec2(uTime * 0.10, -uTime * 0.15));
-    float finalNoise = (n1 + n2) * 0.5;
+    // 1. Base solar plasma swirls (FBM)
+    vec2 uv = vUv * 8.0;
+    float n1 = fbm(uv + vec2(uTime * 0.15, uTime * 0.10));
+    float n2 = fbm(uv - vec2(uTime * 0.08, -uTime * 0.12));
+    float plasmaNoise = (n1 + n2) * 0.5;
 
-    // High-contrast sunspots and peaks matching reference image
-    vec3 cDark   = vec3(0.06, 0.01, 0.0);   // Dark sunspot cavities
-    vec3 cRed    = vec3(0.58, 0.02, 0.0);   // Boiling magma red
-    vec3 cOrange = vec3(1.0, 0.35, 0.0);    // Orange solar fire
-    vec3 cYellow = vec3(1.0, 0.80, 0.0);    // Hot plasma yellow
-    vec3 cWhite  = vec3(1.0, 1.0, 0.90);    // White-hot peaks
+    vec3 cRed    = vec3(0.55, 0.02, 0.0);
+    vec3 cOrange = vec3(1.0, 0.35, 0.0);
+    vec3 cYellow = vec3(1.0, 0.82, 0.0);
+    vec3 cWhite  = vec3(1.0, 1.0, 0.90);
 
-    vec3 color;
-    if (finalNoise < 0.22) {
-      color = mix(cDark, cRed, finalNoise / 0.22);
-    } else if (finalNoise < 0.48) {
-      color = mix(cRed, cOrange, (finalNoise - 0.22) / 0.26);
-    } else if (finalNoise < 0.75) {
-      color = mix(cOrange, cYellow, (finalNoise - 0.48) / 0.27);
+    vec3 plasmaColor;
+    if (plasmaNoise < 0.35) {
+      plasmaColor = mix(cRed, cOrange, plasmaNoise / 0.35);
+    } else if (plasmaNoise < 0.65) {
+      plasmaColor = mix(cOrange, cYellow, (plasmaNoise - 0.35) / 0.30);
     } else {
-      color = mix(cYellow, cWhite, (finalNoise - 0.75) / 0.25);
+      plasmaColor = mix(cYellow, cWhite, (plasmaNoise - 0.65) / 0.35);
     }
 
-    // Edge fresnel glow
+    // 2. Distinct, sharp sunspot umbra cavities
+    // Lower frequency noise for larger blotches
+    vec2 spotUv = vUv * 3.2;
+    float spotNoise = fbm(spotUv + vec2(uTime * 0.05, uTime * 0.03));
+    
+    // Create sharp umbra borders
+    float spotMask = smoothstep(0.36, 0.22, spotNoise); 
+
+    // Deep black-brown sunspot color
+    vec3 cSunspot = vec3(0.015, 0.003, 0.0);
+    
+    // Mix sunspots over the swirling plasma
+    vec3 color = mix(plasmaColor, cSunspot, spotMask * 0.92);
+
+    // 3. Edge fresnel glow
     vec3 view = normalize(vec3(0, 0, 1));
     float rim = 1.0 - abs(dot(vNormal, view));
     rim = pow(rim, 3.0);
@@ -773,17 +783,6 @@ function buildSolarSystem() {
   });
   const corona2 = new THREE.Mesh(coronaGeo2, coronaMat2);
   w.group.add(corona2);
-
-  // Sun glow shells (atmospheric bleed)
-  [4, 6.2, 9].forEach((r, i) => {
-    const g = new THREE.SphereGeometry(r, 16, 16);
-    const m = new THREE.MeshBasicMaterial({
-      color: i===0 ? 0xff6a00 : i===1 ? 0xff4500 : 0xcc2200,
-      transparent:true, opacity: i===0 ? 0.15 : i===1 ? 0.07 : 0.03,
-      blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.BackSide,
-    });
-    w.group.add(new THREE.Mesh(g, m));
-  });
 
   // Point light from sun
   const sunLight = new THREE.PointLight(0xffcc77, 4, 300);
