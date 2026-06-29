@@ -1248,20 +1248,69 @@ function buildEarth() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// WORLD 3 — CITY GRID (aerial at night)
+// WORLD 3 — CITY GRID (aerial view)
 // ─────────────────────────────────────────────────────────────
+const CROWD_VERT = `
+  attribute float aType;  // 0.0 for roads, 1.0 for buildings
+  attribute vec3  aDir;   // velocity vector
+  attribute float aPhase;
+  varying vec3    vColor;
+  varying float   vAlpha;
+  uniform float   uTime;
+  uniform float   uPR;
+
+  void main() {
+    vec3 pos = position;
+
+    if (aType == 0.0) {
+      // Flow along roads, wrapping city bounds (-20.0 to 20.0)
+      pos += aDir * uTime;
+      pos.x = mod(pos.x + 20.0, 40.0) - 20.0;
+      pos.z = mod(pos.z + 20.0, 40.0) - 20.0;
+    } else {
+      // Gentle breathing vibration inside buildings
+      pos.y += sin(uTime * 1.5 + aPhase) * 0.08;
+    }
+
+    // Colors: cyan/yellow headlights on streets, warm orange/amber inside structures
+    if (aType == 0.0) {
+      vColor = (aDir.x + aDir.z > 0.0) ? vec3(0.2, 0.7, 1.0) : vec3(1.0, 0.85, 0.4);
+    } else {
+      vColor = vec3(1.0, 0.55, 0.2);
+    }
+
+    vAlpha = 0.5 + sin(uTime * 4.0 + aPhase) * 0.45;
+
+    vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+    // Tiny pinpoint size
+    gl_PointSize = clamp(1.3 * uPR * (150.0 / -mv.z), 0.5, 4.0);
+    gl_Position  = projectionMatrix * mv;
+  }
+`;
+const CROWD_FRAG = `
+  varying vec3  vColor;
+  varying float vAlpha;
+  void main() {
+    vec2 uv = gl_PointCoord - 0.5;
+    float d = length(uv);
+    if (d > 0.5) discard;
+    float cutoff = smoothstep(0.5, 0.35, d);
+    gl_FragColor = vec4(vColor, cutoff * vAlpha * 0.88);
+  }
+`;
+
 function buildCity() {
   const w = new World('City',
     { x:0, y:22, z:18 }, { x:0, y:0, z:0 },
     0x010108, 0.012
   );
 
-  // Grid of buildings using InstancedMesh
+  // Grid of buildings using InstancedMesh (steel-blue base color for visibility)
   const ROWS = 18, COLS = 18;
   const SPACING = 2.2;
   const bGeo = new THREE.BoxGeometry(1, 1, 1);
   const bMat = new THREE.MeshStandardMaterial({
-    color: 0x0a0a1a, emissive: 0x1a1a3a, emissiveIntensity: 0.4,
+    color: 0x64748b, emissive: 0x1e293b, emissiveIntensity: 0.55,
     roughness: 0.8, metalness: 0.3,
   });
   const iMesh = new THREE.InstancedMesh(bGeo, bMat, ROWS * COLS);
@@ -1328,9 +1377,94 @@ function buildCity() {
   const lMat = new THREE.LineBasicMaterial({ color: 0x2244bb, transparent:true, opacity:.35, blending:THREE.AdditiveBlending });
   w.group.add(new THREE.LineSegments(lGeo, lMat));
 
-  // Ambient + directional
-  w.group.add(new THREE.AmbientLight(0x111133, 1));
-  const dl = new THREE.DirectionalLight(0x334488, .6);
+
+  // 200,000 NPC CROWDS (headlights flowing along roads, windows twinkling)
+  const NPC_COUNT = 200000;
+  const npcPos   = new Float32Array(NPC_COUNT * 3);
+  const npcDir   = new Float32Array(NPC_COUNT * 3);
+  const npcType  = new Float32Array(NPC_COUNT);
+  const npcPhase = new Float32Array(NPC_COUNT);
+
+  // Road coordinates cache
+  const roadRows = [];
+  const roadCols = [];
+  for (let r = 0; r < ROWS; r++) { if (r % 4 === 0) roadRows.push((r - ROWS/2) * SPACING); }
+  for (let c = 0; c < COLS; c++) { if (c % 4 === 0) roadCols.push((c - COLS/2) * SPACING); }
+
+  for (let i = 0; i < NPC_COUNT; i++) {
+    const isRoadNPC = Math.random() < 0.75;
+    
+    if (isRoadNPC) {
+      npcType[i] = 0.0;
+      npcPhase[i] = Math.random() * 100.0;
+      
+      const isHorizontal = Math.random() < 0.5;
+      if (isHorizontal) {
+        const z = roadRows[Math.floor(Math.random() * roadRows.length)];
+        const x = (Math.random() - 0.5) * 40.0;
+        npcPos[i * 3]     = x;
+        npcPos[i * 3 + 1] = -0.42; // slightly above ground
+        npcPos[i * 3 + 2] = z;
+        
+        const speed = 0.8 + Math.random() * 1.5;
+        npcDir[i * 3]     = Math.random() < 0.5 ? speed : -speed;
+        npcDir[i * 3 + 1] = 0.0;
+        npcDir[i * 3 + 2] = 0.0;
+      } else {
+        const x = roadCols[Math.floor(Math.random() * roadCols.length)];
+        const z = (Math.random() - 0.5) * 40.0;
+        npcPos[i * 3]     = x;
+        npcPos[i * 3 + 1] = -0.42;
+        npcPos[i * 3 + 2] = z;
+        
+        const speed = 0.8 + Math.random() * 1.5;
+        npcDir[i * 3]     = 0.0;
+        npcDir[i * 3 + 1] = 0.0;
+        npcDir[i * 3 + 2] = Math.random() < 0.5 ? speed : -speed;
+      }
+    } else {
+      npcType[i] = 1.0;
+      npcPhase[i] = Math.random() * 10.0;
+      
+      const b = buildingData[Math.floor(Math.random() * buildingData.length)];
+      if (b) {
+        const wFactor = 0.8;
+        npcPos[i * 3]     = b.x + (Math.random() - 0.5) * wFactor;
+        npcPos[i * 3 + 1] = Math.random() * b.h - 0.5;
+        npcPos[i * 3 + 2] = b.z + (Math.random() - 0.5) * wFactor;
+      } else {
+        npcPos[i * 3]     = 0;
+        npcPos[i * 3 + 1] = 0;
+        npcPos[i * 3 + 2] = 0;
+      }
+      npcDir[i * 3]     = 0;
+      npcDir[i * 3 + 1] = 0;
+      npcDir[i * 3 + 2] = 0;
+    }
+  }
+
+  const npcGeo = new THREE.BufferGeometry();
+  npcGeo.setAttribute('position', new THREE.BufferAttribute(npcPos, 3));
+  npcGeo.setAttribute('aDir',     new THREE.BufferAttribute(npcDir, 3));
+  npcGeo.setAttribute('aType',    new THREE.BufferAttribute(npcType, 1));
+  npcGeo.setAttribute('aPhase',   new THREE.BufferAttribute(npcPhase, 1));
+
+  const npcMat = new THREE.ShaderMaterial({
+    vertexShader:   CROWD_VERT,
+    fragmentShader: CROWD_FRAG,
+    uniforms:       { ...sharedUniforms, uScene: { value: 3.0 } },
+    transparent:    true,
+    depthWrite:     false,
+    blending:       THREE.AdditiveBlending,
+  });
+
+  const npcSystem = new THREE.Points(npcGeo, npcMat);
+  w.group.add(npcSystem);
+
+
+  // Ambient + directional (brightened sky-lit values)
+  w.group.add(new THREE.AmbientLight(0xdbe5f0, 1.8));
+  const dl = new THREE.DirectionalLight(0xfff5e0, 2.5);
   dl.position.set(10, 30, 10);
   w.group.add(dl);
 
