@@ -419,6 +419,103 @@ class World {
   tick(t, dt)  {}   // override
 }
 
+// ─────────────────────────────────────────────────────────────
+// AUDIO MANAGER (SPATIAL NARRATIONS TRIGGER)
+// ─────────────────────────────────────────────────────────────
+const narrationTracks = [
+  '1.mp3', // Galaxy (p0)
+  '2.mp3', // Solar System (p1)
+  '3.mp3', // Earth (p2)
+  '4.mp3', // Forest (p3)
+  '5.mp3', // AI Systems (p4)
+  '6.mp3'  // Contact (p5)
+];
+
+let activeAudio = null;
+let audioEnabled = false;
+let audioMuted = false;
+
+function playNarrationForPage(idx) {
+  if (!audioEnabled) return;
+  
+  // Smoothly fade out existing audio if playing
+  if (activeAudio) {
+    const fadeOutAudio = activeAudio;
+    let volume = fadeOutAudio.volume;
+    const fadeInterval = setInterval(() => {
+      volume = Math.max(0, volume - 0.1);
+      fadeOutAudio.volume = volume;
+      if (volume <= 0) {
+        clearInterval(fadeInterval);
+        fadeOutAudio.pause();
+        fadeOutAudio.currentTime = 0;
+      }
+    }, 40);
+  }
+
+  // Load new audio file
+  const newAudioFile = narrationTracks[idx];
+  if (!newAudioFile) {
+    activeAudio = null;
+    return;
+  }
+
+  const audioObj = new Audio(newAudioFile);
+  audioObj.volume = audioMuted ? 0 : 0.8;
+  activeAudio = audioObj;
+
+  if (!audioMuted) {
+    audioObj.play().catch(err => {
+      console.warn("Audio autoplay blocked by browser policy:", err);
+    });
+  }
+}
+
+function toggleAudioMute() {
+  audioMuted = !audioMuted;
+  const toggleBtn = document.getElementById('audioToggle');
+  
+  if (audioMuted) {
+    if (toggleBtn) toggleBtn.classList.add('muted');
+    if (activeAudio) {
+      activeAudio.volume = 0;
+      activeAudio.pause();
+    }
+  } else {
+    if (toggleBtn) toggleBtn.classList.remove('muted');
+    if (activeAudio) {
+      activeAudio.volume = 0.8;
+      activeAudio.play().catch(e => console.warn(e));
+    } else {
+      if (currentWorld >= 0) {
+        playNarrationForPage(currentWorld);
+      }
+    }
+  }
+}
+
+// Bind button event listener once DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  const toggleBtn = document.getElementById('audioToggle');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', toggleAudioMute);
+  }
+  
+  const startBtn = document.getElementById('startBtn');
+  if (startBtn) {
+    startBtn.addEventListener('click', () => {
+      audioEnabled = true;
+      const startOverlay = document.getElementById('startOverlay');
+      if (startOverlay) {
+        startOverlay.style.opacity = '0';
+        startOverlay.style.pointerEvents = 'none';
+        setTimeout(() => startOverlay.remove(), 800);
+      }
+      playNarrationForPage(0);
+    });
+  }
+});
+
 let currentWorld = -1;
 let transitioning = false;
 const tOverlay = document.getElementById('tOverlay');
@@ -448,6 +545,7 @@ async function showWorld(idx) {
 
   // Switch
   currentWorld = idx;
+  playNarrationForPage(idx);
   const w = worlds[idx];
   w.group.visible = true;
 
