@@ -155,12 +155,12 @@ function updateGroundMovement(dt) {
     moveZ -= Math.cos(groundPlayer.yaw);
   }
   if (keysPressed['a'] || keysPressed['arrowleft']) {
-    moveX += Math.sin(groundPlayer.yaw - Math.PI / 2);
-    moveZ += Math.cos(groundPlayer.yaw - Math.PI / 2);
-  }
-  if (keysPressed['d'] || keysPressed['arrowright']) {
     moveX -= Math.sin(groundPlayer.yaw - Math.PI / 2);
     moveZ -= Math.cos(groundPlayer.yaw - Math.PI / 2);
+  }
+  if (keysPressed['d'] || keysPressed['arrowright']) {
+    moveX += Math.sin(groundPlayer.yaw - Math.PI / 2);
+    moveZ += Math.cos(groundPlayer.yaw - Math.PI / 2);
   }
 
   const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
